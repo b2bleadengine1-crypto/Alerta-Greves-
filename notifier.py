@@ -14,7 +14,8 @@ Environment Variables:
 Destinations:
 1. Telegram Bot API:
    - Endpoint: https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage
-   - Format: Formatted Markdown with strike details & inline action buttons
+   - Format: Formatted HTML with <b>, <i>, <code> tags and html.escape() for dynamic fields
+   - Fallback Mechanism: Automatic retry without parse_mode (plain text) on HTTP 400
 2. OneSignal REST API:
    - Endpoint: https://api.onesignal.com/notifications
    - Segment: ["Total Subscriptions"]
@@ -29,6 +30,7 @@ Usage:
 import os
 import sys
 import json
+import html
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -87,14 +89,16 @@ def execute_http_post(
 
 
 # ==============================================================================
-# 1. TELEGRAM BOT NOTIFICATIONS
+# 1. TELEGRAM BOT NOTIFICATIONS (HTML Mode + Plain Text Fallback)
 # ==============================================================================
 
 def send_telegram_alert(strike: Dict[str, Any]) -> bool:
     """
-    Sends a formatted Markdown alert message to the Telegram channel or group.
+    Sends a formatted HTML alert message to the Telegram channel or group.
     Target: TELEGRAM_CHAT_ID environment variable (defaults to '@alertagreves_pt').
-    Includes comprehensive try-except logging for debugging HTTP responses.
+    Uses html.escape() on all dynamic content.
+    If Telegram returns HTTP 400 ('can't parse entities'), immediately retries
+    with plain text (without parse_mode) as a guaranteed delivery fallback.
     """
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip() or "@alertagreves_pt"
@@ -117,18 +121,43 @@ def send_telegram_alert(strike: Dict[str, Any]) -> bool:
     data_fim = (strike.get("dataFim") or strike.get("data_fim", ""))[:10]
     periodo = data_ini if data_ini == data_fim or not data_fim else f"{data_ini} a {data_fim}"
 
-    # Formatted Markdown text
-    markdown_message = (
-        f"🚨 *ALERTA GREVES PT: {empresa}* 🚨\n\n"
-        f"📍 *Região:* {regiao}\n"
-        f"🏷️ *Setor:* {setor}\n"
-        f"📅 *Data:* {periodo}\n"
-        f"⏰ *Horário:* {horario}\n"
-        f"🚨 *Estado:* `{estado}`\n"
-        f"⚠️ *Gravidade:* {gravidade}\n\n"
-        f"⚖️ *Serviços Mínimos Decretados:*\n_{servicos}_\n\n"
-        f"📌 *Motivo:* {motivo}\n\n"
-        f"📢 _Acompanha todas as paralisações em tempo real no canal @alertagreves_pt_"
+    # Escaping dynamic fields with html.escape() to prevent Telegram parsing errors
+    safe_empresa = html.escape(str(empresa))
+    safe_setor = html.escape(str(setor))
+    safe_regiao = html.escape(str(regiao))
+    safe_estado = html.escape(str(estado))
+    safe_gravidade = html.escape(str(gravidade))
+    safe_horario = html.escape(str(horario))
+    safe_servicos = html.escape(str(servicos))
+    safe_motivo = html.escape(str(motivo))
+    safe_periodo = html.escape(str(periodo))
+
+    # 1. Formatted HTML text
+    html_message = (
+        f"🚨 <b>ALERTA GREVES PT: {safe_empresa}</b> 🚨\n\n"
+        f"📍 <b>Região:</b> {safe_regiao}\n"
+        f"🏷️ <b>Setor:</b> {safe_setor}\n"
+        f"📅 <b>Data:</b> {safe_periodo}\n"
+        f"⏰ <b>Horário:</b> {safe_horario}\n"
+        f"🚨 <b>Estado:</b> <code>{safe_estado}</code>\n"
+        f"⚠️ <b>Gravidade:</b> {safe_gravidade}\n\n"
+        f"⚖️ <b>Serviços Mínimos Decretados:</b>\n<i>{safe_servicos}</i>\n\n"
+        f"📌 <b>Motivo:</b> {safe_motivo}\n\n"
+        f"📢 <i>Acompanha todas as paralisações em tempo real no canal @alertagreves_pt</i>"
+    )
+
+    # 2. Plain text fallback version (without formatting tags)
+    plain_message = (
+        f"🚨 ALERTA GREVES PT: {empresa} 🚨\n\n"
+        f"📍 Região: {regiao}\n"
+        f"🏷️ Setor: {setor}\n"
+        f"📅 Data: {periodo}\n"
+        f"⏰ Horário: {horario}\n"
+        f"🚨 Estado: {estado}\n"
+        f"⚠️ Gravidade: {gravidade}\n\n"
+        f"⚖️ Serviços Mínimos Decretados:\n{servicos}\n\n"
+        f"📌 Motivo: {motivo}\n\n"
+        f"📢 Acompanha todas as paralisações em tempo real no canal @alertagreves_pt"
     )
 
     # WhatsApp share direct link
@@ -157,19 +186,19 @@ def send_telegram_alert(strike: Dict[str, Any]) -> bool:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
         "chat_id": chat_id,
-        "text": markdown_message,
-        "parse_mode": "Markdown",
+        "text": html_message,
+        "parse_mode": "HTML",
         "disable_web_page_preview": True,
         "reply_markup": inline_keyboard
     }
 
-    print(f"\n[Telegram Request] Sending alert for '{empresa}' to {chat_id}...")
-    print(f"  -> POST URL: https://api.telegram.org/bot{'*' * 8}/sendMessage")
+    print(f"\n[Telegram Request] Sending HTML alert for '{empresa}' to {chat_id}...")
+    print(f"  -> POST URL: https://api.telegram.org/bot{'*' * 8}/sendMessage | Parse Mode: HTML")
 
     try:
         status_code, response_body = execute_http_post(url, json_payload=payload, timeout=HTTP_TIMEOUT)
         
-        # Parse JSON response for detailed logging
+        # Parse JSON response for detailed inspection
         try:
             parsed_json = json.loads(response_body)
             is_ok = parsed_json.get("ok", False)
@@ -179,14 +208,45 @@ def send_telegram_alert(strike: Dict[str, Any]) -> bool:
 
         if status_code == 200 and is_ok:
             message_id = parsed_json.get("result", {}).get("message_id") if parsed_json else "N/A"
-            print(f"[Telegram Success] HTTP {status_code}: Message delivered successfully! (Message ID: {message_id})")
+            print(f"[Telegram Success] HTTP {status_code}: HTML message delivered successfully! (Message ID: {message_id})")
             return True
-        else:
-            print(f"[Telegram HTTP Error] Status Code: {status_code}", file=sys.stderr)
-            print(f"[Telegram Error Body]: {response_body}", file=sys.stderr)
-            if parsed_json:
-                print(f"[Telegram Error Details]: {parsed_json.get('description')}", file=sys.stderr)
-            return False
+
+        # FALLBACK MECHANISM: If Telegram returns HTTP 400 (e.g. "can't parse entities"), retry with plain text!
+        if status_code == 400:
+            print("[Telegram Fallback] HTTP 400 error detected from Telegram API.")
+            if parsed_json and parsed_json.get("description"):
+                print(f"  -> Error cause: {parsed_json['description']}")
+            print("  -> Immediately retrying without parse_mode (plain text fallback)...")
+
+            fallback_payload = {
+                "chat_id": chat_id,
+                "text": plain_message,
+                "disable_web_page_preview": True,
+                "reply_markup": inline_keyboard
+            }
+
+            fb_status_code, fb_response_body = execute_http_post(url, json_payload=fallback_payload, timeout=HTTP_TIMEOUT)
+            try:
+                fb_parsed = json.loads(fb_response_body)
+                fb_ok = fb_parsed.get("ok", False)
+            except Exception:
+                fb_parsed = None
+                fb_ok = (fb_status_code == 200)
+
+            if fb_status_code == 200 and fb_ok:
+                fb_msg_id = fb_parsed.get("result", {}).get("message_id") if fb_parsed else "N/A"
+                print(f"[Telegram Success via Fallback] HTTP {fb_status_code}: Message delivered successfully as plain text! (Message ID: {fb_msg_id})")
+                return True
+            else:
+                print(f"[Telegram Fallback Error] Plain text retry failed. HTTP {fb_status_code} - Body: {fb_response_body}", file=sys.stderr)
+                return False
+
+        # Other non-400 errors
+        print(f"[Telegram HTTP Error] Status Code: {status_code}", file=sys.stderr)
+        print(f"[Telegram Error Body]: {response_body}", file=sys.stderr)
+        if parsed_json:
+            print(f"[Telegram Error Details]: {parsed_json.get('description')}", file=sys.stderr)
+        return False
 
     except Exception as exc:
         print(f"[Telegram Exception] Request failed with exception: {exc}", file=sys.stderr)
