@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#020617"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e"/>
+      <stop offset="50%" stop-color="#ef4444"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <radialGradient id="glowGrad" cx="50%" cy="40%" r="50%">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Background Base with Squircle -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)"/>
+  
+  <!-- Ambient Red/Amber Glow -->
+  <circle cx="256" cy="220" r="180" fill="url(#glowGrad)"/>
+
+  <!-- Outer Border Ring -->
+  <rect x="16" y="16" width="480" height="480" rx="116" fill="none" stroke="#334155" stroke-width="3" stroke-opacity="0.4"/>
+
+  <!-- Warning / Strike Shield & Bell / Megaphone Icon Graphic -->
+  <g filter="url(#shadow)">
+    <!-- Shield / Triangle Badge -->
+    <path d="M 256 100 L 396 348 C 404 362 394 380 378 380 L 134 380 C 118 380 108 362 116 348 Z" 
+          fill="#1e293b" 
+          stroke="url(#accentGrad)" 
+          stroke-width="14" 
+          stroke-linejoin="round"/>
+
+    <!-- Inside Alert Exclamation & Megaphone / Train Stylization -->
+    <!-- Exclamation Bar -->
+    <rect x="242" y="180" width="28" height="110" rx="14" fill="#ffffff"/>
+    <!-- Exclamation Dot -->
+    <circle cx="256" cy="330" r="15" fill="#f43f5e"/>
+
+    <!-- Pulse radar waves left & right -->
+    <path d="M 180 230 A 80 80 0 0 0 180 310" fill="none" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+    <path d="M 332 230 A 80 80 0 0 1 332 310" fill="none" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+  </g>
+
+  <!-- Text Badge "PT" -->
+  <rect x="206" y="415" width="100" height="38" rx="10" fill="#f43f5e"/>
+  <text x="256" y="441" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="3">GREVES</text>
+</svg>

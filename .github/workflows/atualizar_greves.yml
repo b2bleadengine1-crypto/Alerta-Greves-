@@ -1,21 +1,22 @@
-name: Strike Monitor & Live Data Pipeline (GrevesPT)
+name: Strike Monitor, Pipeline & GitHub Pages Deploy (GrevesPT)
 
 on:
   schedule:
     # Runs every 4 hours (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
     - cron: '0 */4 * * *'
-  workflow_dispatch: # Allows one-click manual triggering from GitHub Actions UI
+  workflow_dispatch: # Allows manual one-click trigger
   push:
-    paths:
-      - 'scraper_greves.py'
-      - 'ai_parser.py'
-      - 'notifier.py'
-      - '.github/workflows/atualizar_greves.yml'
     branches:
       - main
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages-deploy'
+  cancel-in-progress: false
 
 jobs:
   scrape-and-notify:
@@ -60,15 +61,27 @@ jobs:
         run: |
           python notifier.py
 
-      - name: Step 3 - Commit and Push Updated Strike Data Reliably
+      - name: Step 3 - Commit and Push Updated Strike Data
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add greves.json public/greves.json greves_arquivo.json || true
+          git add greves.json public/greves.json greves_arquivo.json OneSignalSDKWorker.js index.html || true
           if ! git diff --staged --quiet; then
             git commit -m "chore(data): update strike records and minimum services [skip ci]"
             git push
-            echo "Successfully committed and pushed updated data."
+            echo "Successfully committed and pushed updated data to repository."
           else
-            echo "No changes detected in greves.json. Working tree is clean."
+            echo "No data changes detected. Working tree clean."
           fi
+
+      - name: Step 4 - Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Step 5 - Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.' # Serves root directory for GitHub Pages (index.html, OneSignalSDKWorker.js, greves.json)
+
+      - name: Step 6 - Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
