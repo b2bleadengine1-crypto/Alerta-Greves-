@@ -40,7 +40,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Scraper & Alert Dispatcher
+      - name: Step 1 - Scrape and Generate greves.json
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -50,22 +50,25 @@ jobs:
         run: |
           python scraper_greves.py
 
-      - name: Check for Data Changes in greves.json
-        id: git-check
+      - name: Step 2 - Dispatch Unconditional Notifications to Telegram & OneSignal
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
+          ONESIGNAL_REST_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
         run: |
-          if [ -n "$(git status --porcelain greves.json public/greves.json greves_arquivo.json)" ]; then
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "Changes detected in strike data files."
-          else
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "No data changes detected."
-          fi
+          python notifier.py
 
-      - name: Commit and Push Updated Strike Data
-        if: steps.git-check.outputs.has_changes == 'true'
+      - name: Step 3 - Commit and Push Updated Strike Data Reliably
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add greves.json public/greves.json greves_arquivo.json
-          git commit -m "chore(data): update strike records and minimum services [skip ci]"
-          git push
+          git add greves.json public/greves.json greves_arquivo.json || true
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(data): update strike records and minimum services [skip ci]"
+            git push
+            echo "Successfully committed and pushed updated data."
+          else
+            echo "No changes detected in greves.json. Working tree is clean."
+          fi

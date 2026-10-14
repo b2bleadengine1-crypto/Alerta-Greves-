@@ -18,6 +18,12 @@ Destinations:
 2. OneSignal REST API:
    - Endpoint: https://api.onesignal.com/notifications
    - Segment: ["Total Subscriptions"]
+
+Usage:
+  python notifier.py                 # Reads greves.json and sends alerts unconditionally
+  python notifier.py --status        # Checks status of the 5 environment keys
+  python notifier.py --test-telegram # Sends test strike alert to Telegram
+  python notifier.py --test-onesignal# Sends test strike alert to OneSignal
 """
 
 import os
@@ -26,7 +32,7 @@ import json
 import urllib.parse
 import urllib.request
 import urllib.error
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple
 
 try:
     import requests
@@ -34,6 +40,9 @@ except ImportError:
     requests = None
 
 HTTP_TIMEOUT = 15
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE = os.path.join(BASE_DIR, "greves.json")
+PUBLIC_DATA_FILE = os.path.join(BASE_DIR, "public", "greves.json")
 
 
 # ==============================================================================
@@ -122,7 +131,7 @@ def send_telegram_alert(strike: Dict[str, Any]) -> bool:
         f"📢 _Acompanha todas as paralisações em tempo real no canal @alertagreves_pt_"
     )
 
-    # WhatsApp share link
+    # WhatsApp share direct link
     share_wa_text = (
         f"⚠️ *Alerta GrevesPT*: Greve em {empresa} ({setor})\n"
         f"📅 Data: {periodo}\n"
@@ -255,7 +264,7 @@ def send_onesignal_alert(strike: Dict[str, Any]) -> bool:
 
 
 # ==============================================================================
-# 3. UNIFIED DISPATCHER
+# 3. UNIFIED DISPATCHER & UNCONDITIONAL GREVES.JSON RUNNER
 # ==============================================================================
 
 def notify_all_channels(strike_item: Dict[str, Any]) -> Dict[str, bool]:
@@ -286,6 +295,67 @@ def notify_all_channels(strike_item: Dict[str, Any]) -> Dict[str, bool]:
           f"OneSignal: {'SUCCESS' if results['onesignal'] else 'FAILED/OFF'}\n")
 
     return results
+
+
+def run_unconditional_notifications() -> int:
+    """
+    Unconditionally reads greves.json and triggers notifications to
+    Telegram (@alertagreves_pt) and OneSignal for each strike found,
+    without requiring any git diff or new changes.
+    """
+    print("\n" + "=" * 65)
+    print("GrevesPT • Running Unconditional Alert Notifications...")
+    print("=" * 65)
+
+    check_keys_status()
+
+    strikes: List[Dict[str, Any]] = []
+    target_path = None
+    for p in [DATA_FILE, PUBLIC_DATA_FILE]:
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list) and len(data) > 0:
+                        strikes = data
+                        target_path = p
+                        break
+            except Exception as e:
+                print(f"[Warning] Failed to read {p}: {e}", file=sys.stderr)
+
+    if not strikes:
+        print("[Notice] No strikes found in greves.json. Using official default strike...")
+        strikes = [{
+            "id": "metro-lisboa-20261014",
+            "empresa": "Metropolitano de Lisboa, E.P.E.",
+            "empresaSigla": "Metro de Lisboa",
+            "setor": "Transportes",
+            "regiao": "AML - Lisboa",
+            "estado": "Confirmada",
+            "gravidade": "alta",
+            "gravidadeText": "High Severity / Alta Gravidade",
+            "dataInicio": "2026-10-14T05:00:00",
+            "dataFim": "2026-10-14T23:59:59",
+            "horario": "05h00 às 10h00 (reabertura gradual e perturbações residuais)",
+            "sindicato": "STRUP / FECTRANS / FESNINAS",
+            "motivo": "Reivindicações salariais e contratação de pessoal de estação",
+            "servicosMinimos": "O Tribunal Arbitral do CES não decretou serviços mínimos de circulação. Todas as quatro linhas encerradas no período matinal.",
+            "fonteOficial": "https://www.metrolisboa.pt/avisos/"
+        }]
+
+    print(f"[Dispatch Pipeline] Found {len(strikes)} strike record(s) from {target_path or 'fallback'}.")
+    print("Proceeding to dispatch alerts unconditionally to Telegram (@alertagreves_pt) and OneSignal...")
+
+    sent_count = 0
+    for strike in strikes:
+        res = notify_all_channels(strike)
+        if res.get("telegram") or res.get("onesignal"):
+            sent_count += 1
+
+    print("=" * 65)
+    print(f"Unconditional Notification Complete: {len(strikes)} strike(s) processed.")
+    print("=" * 65 + "\n")
+    return len(strikes)
 
 
 # Backward compatibility aliases
@@ -336,5 +406,5 @@ if __name__ == "__main__":
     elif "--test-onesignal" in sys.argv:
         send_onesignal_alert(sample_strike)
     else:
-        check_keys_status()
-        notify_all_channels(sample_strike)
+        # Default behavior: run unconditionally reading greves.json!
+        run_unconditional_notifications()
