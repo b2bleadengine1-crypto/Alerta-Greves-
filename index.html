@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="pt-PT" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>GrevesPT - Monitor de Greves em Portugal | PWA</title>
+  <meta name="description" content="Acompanhamento em tempo real, serviços mínimos decretados e alertas de greves nos transportes e serviços públicos em Portugal." />
+  
+  <!-- Open Graph & Social Cards -->
+  <meta property="og:title" content="GrevesPT - Monitor de Greves em Portugal" />
+  <meta property="og:description" content="Acompanhamento em tempo real, serviços mínimos e alertas de greves em Portugal." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="/" />
+  <meta property="og:image" content="/pwa-512x512.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  
+  <!-- PWA & Mobile Web Capabilities -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#020617" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="GrevesPT" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+
+  <!-- OneSignal Web Push SDK (Ativação automática e condicional apenas com App ID válido) -->
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    
+    // Verifica se existe um App ID válido e configurado (evita erro "AppID doesn't match existing apps")
+    window.hasValidOneSignalAppId = Boolean(
+      window.ONESIGNAL_APP_ID && 
+      typeof window.ONESIGNAL_APP_ID === 'string' &&
+      window.ONESIGNAL_APP_ID !== "00000000-0000-0000-0000-000000000000" &&
+      window.ONESIGNAL_APP_ID.trim().length > 15
+    );
+
+    if (window.hasValidOneSignalAppId) {
+      const osScript = document.createElement('script');
+      osScript.src = "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js";
+      osScript.defer = true;
+      document.head.appendChild(osScript);
+
+      OneSignalDeferred.push(async function(OneSignal) {
+        try {
+          await OneSignal.init({
+            appId: window.ONESIGNAL_APP_ID,
+            notifyButton: { enable: false },
+            allowLocalhostAsSecureOrigin: true
+          });
+        } catch (err) {
+          console.warn('[OneSignal] Não foi possível contactar o serviço:', err);
+        }
+      });
+    } else {
+      // Mock seguro para chamadas que usem OneSignal
+      window.OneSignal = {
+        Notifications: { permission: false, requestPermission: async () => false },
+        User: { addTags: async () => {} }
+      };
+    }
+  </script>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              850: '#0b1120',
+              900: '#0f172a',
+              950: '#020617'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Suporte a Safe-Areas em dispositivos com notch (iPhone/iPad) */
+    body {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    /* Scrollbars elegantes */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #020617;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Animação suave para modal e bottom sheet */
+    .sheet-transition {
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans antialiased selection:bg-rose-500 selection:text-white">
+
+  <!-- AVISO OFFLINE (Topo) -->
+  <div id="offline-banner" class="hidden bg-amber-600 text-slate-950 px-4 py-2 text-center text-xs font-semibold flex items-center justify-center gap-2 sticky top-0 z-50 shadow-md">
+    <svg class="w-4 h-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L12 12m-5.636 5.636a9 9 0 010-12.728m0 0l2.829 2.829M12 12l2.829-2.829M12 12L9.171 9.171" />
+    </svg>
+    <span>Estás em <strong>Modo Offline</strong>. A consultar dados guardados em cache local no teu dispositivo.</span>
+  </div>
+
+  <!-- GUIA INTELIGENTE DE INSTALAÇÃO NO IOS (Safari) -->
+  <aside id="ios-install-banner" class="hidden bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 border-b border-rose-500/30 px-4 py-3 text-slate-200 z-40 sticky top-0 shadow-xl backdrop-blur-md">
+    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs sm:text-sm">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500 to-amber-500 p-0.5 shrink-0 shadow-lg shadow-rose-500/20">
+          <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+            <svg class="w-5 h-5 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+            </svg>
+          </div>
+        </div>
+        <div>
+          <p class="font-bold text-white flex items-center gap-1.5">
+            Instalar GrevesPT no iPhone / iPad
+            <span class="bg-rose-500/20 text-rose-300 text-[10px] px-1.5 py-0.5 rounded font-medium border border-rose-500/30">Web Push</span>
+          </p>
+          <p class="text-slate-400 mt-0.5">
+            Para receberes notificações e teres acesso offline imediato: toca em 
+            <span class="inline-flex items-center px-1 py-0.5 bg-slate-800 rounded text-slate-200 font-semibold mx-1">
+              <svg class="w-3.5 h-3.5 inline mr-1 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg> Partilhar
+            </span> e depois em 
+            <span class="text-amber-300 font-semibold underline decoration-amber-400/50">"Adicionar ao Ecrã Principal"</span>.
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
+        <button id="dismiss-ios-banner" class="px-3 py-1.5 text-xs text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- CABEÇALHO PRINCIPAL -->
+  <header class="border-b border-slate-800 bg-slate-950/90 backdrop-blur-md sticky top-0 z-30">
+    <div class="max-w-6xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between gap-3">
+      <!-- Logótipo e Marca -->
+      <div class="flex items-center gap-3">
+        <div class="relative flex items-center justify-center">
+          <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-br from-rose-600 via-rose-500 to-amber-500 flex items-center justify-center shadow-lg shadow-rose-900/40">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <span class="absolute -top-1 -right-1 flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+          </span>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl sm:text-2xl font-black tracking-tight text-white">Greves<span class="text-rose-500">PT</span></h1>
+            <span class="hidden sm:inline-block bg-slate-800 text-slate-300 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-slate-700">
+              PWA OFFLINE-FIRST
+            </span>
+          </div>
+          <p class="text-[11px] sm:text-xs text-slate-400">Monitor de greves e serviços mínimos em Portugal</p>
+        </div>
+      </div>
+
+      <!-- Ações de topo: Instalar, Alertas e Estado -->
+      <div class="flex items-center gap-2">
+        <!-- Botão Instalar PWA (Android / Chromium) -->
+        <button id="pwa-install-btn" class="hidden items-center gap-1.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-md shadow-rose-950/50 transition transform active:scale-95">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          <span class="hidden sm:inline">Instalar App</span>
+          <span class="sm:hidden">Instalar</span>
+        </button>
+
+        <!-- Botão Canal Telegram -->
+        <a href="https://t.me/GrevesPT_Alertas" target="_blank" rel="noopener noreferrer" class="hidden md:inline-flex items-center gap-1.5 bg-sky-950/70 hover:bg-sky-900/80 border border-sky-700/50 text-sky-300 text-xs font-semibold px-3 py-2 rounded-lg transition active:scale-95 shadow-sm">
+          <svg class="w-4 h-4 fill-current text-sky-400" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+          </svg>
+          <span>Canal Telegram</span>
+        </a>
+
+        <!-- Botão Subscrição de Alertas -->
+        <button id="open-subscriptions-btn" class="relative flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-lg transition active:scale-95">
+          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <span class="hidden sm:inline">Alertas</span>
+          <span id="sub-badge-count" class="hidden ml-1 px-1.5 py-0.2 bg-rose-500 text-white rounded-full text-[10px] font-bold">0</span>
+        </button>
+
+        <!-- Indicador de Rede / Atualizar -->
+        <button id="refresh-data-btn" title="Atualizar greves" class="p-2 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-800 transition">
+          <svg id="refresh-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-4 sm:py-6 space-y-5">
+
+    <!-- BARRA DE PESQUISA EM TEMPO REAL -->
+    <div class="relative">
+      <div class="relative">
+        <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+        </span>
+        <input
+          id="search-input"
+          type="search"
+          placeholder="Pesquisar por empresa ou serviço (ex: CP, Carris, Metro, Fertagus, Transtejo, Escolas, SNS)..."
+          class="w-full pl-11 pr-10 py-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition text-sm sm:text-base shadow-inner"
+        />
+        <button id="clear-search-btn" class="hidden absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- PAINEL DE FILTROS: SETOR & REGIÃO -->
+    <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3.5 sm:p-4 space-y-3 shadow-sm backdrop-blur">
+      
+      <!-- Linha 1: Setores -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+            Setor de Atividade
+          </span>
+          <button id="toggle-my-subs-btn" class="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 transition">
+            <span id="subs-filter-indicator" class="w-2 h-2 rounded-full bg-slate-600"></span>
+            <span>Apenas Minhas Subscrições</span>
+          </button>
+        </div>
+        <div class="flex flex-wrap gap-1.5 sm:gap-2" id="sector-filters-container">
+          <button data-sector="Todos" class="sector-chip active-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 text-white shadow-sm transition">Todos</button>
+          <button data-sector="Transportes" class="sector-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Transportes</button>
+          <button data-sector="Educação" class="sector-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Educação</button>
+          <button data-sector="Saúde" class="sector-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Saúde</button>
+          <button data-sector="Função Pública" class="sector-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Função Pública</button>
+          <button data-sector="Privado" class="sector-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Privado</button>
+        </div>
+      </div>
+
+      <!-- Linha 2: Regiões -->
+      <div class="pt-2 border-t border-slate-800/60">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Região Afetada
+          </span>
+        </div>
+        <div class="flex flex-wrap gap-1.5 sm:gap-2" id="region-filters-container">
+          <button data-region="Todas" class="region-chip active-filter px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 text-white shadow-sm transition">Todas</button>
+          <button data-region="Nacional" class="region-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Nacional</button>
+          <button data-region="Área Metropolitana de Lisboa" class="region-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Área Metropolitana de Lisboa</button>
+          <button data-region="Margem Sul" class="region-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Margem Sul</button>
+          <button data-region="Porto" class="region-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Porto</button>
+          <button data-region="Outras" class="region-chip px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition">Outras Regiões</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- BARRA DE STATUS / CONTAGEM -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-400 px-1 gap-2">
+      <div class="flex items-center gap-2">
+        <span id="results-count" class="font-bold text-slate-200">A carregar alertas...</span>
+        <span class="text-slate-600">•</span>
+        <span id="last-updated-text" class="text-slate-400">Verificado recentemente</span>
+      </div>
+      <div class="flex items-center gap-3 text-[11px]">
+        <span class="inline-flex items-center gap-1 text-rose-400 font-medium">
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span> Alta Gravidade
+        </span>
+        <span class="inline-flex items-center gap-1 text-amber-400 font-medium">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span> Serviços Mínimos / Pré-Aviso
+        </span>
+        <span class="inline-flex items-center gap-1 text-emerald-400 font-medium">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span> Desconvocada
+        </span>
+      </div>
+    </div>
+
+    <!-- LISTA DE CARTÕES DE GREVE -->
+    <div id="strikes-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Injetado dinamicamente via JavaScript -->
+    </div>
+
+    <!-- ESTADO VAZIO / SEM RESULTADOS -->
+    <div id="empty-state" class="hidden py-16 text-center space-y-3 bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+      <div class="w-14 h-14 mx-auto rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
+        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <h3 class="text-base font-semibold text-white">Nenhuma greve encontrada</h3>
+      <p class="text-xs text-slate-400 max-w-sm mx-auto">Não encontramos paralisações com os filtros ou pesquisa selecionada. Tenta repor os filtros ou pesquisar por outro operador.</p>
+      <button id="reset-filters-btn" class="mt-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-rose-400 rounded-lg transition">
+        Repor Todos os Filtros
+      </button>
+    </div>
+
+  </main>
+
+  <!-- RODAPÉ -->
+  <footer class="border-t border-slate-800/80 bg-slate-950 py-6 text-center text-xs text-slate-500 mt-8 space-y-2">
+    <div class="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <p>GrevesPT • Informação de interesse público agregada de fontes oficiais (CES, DGAEP, Sindicatos e Operadores de Transporte).</p>
+      <p class="text-slate-400 flex items-center gap-1">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+        PWA com Funcionamento Offline Ativo
+      </p>
+    </div>
+  </footer>
+
+  <!-- MODAL / GAVETA DE SUBSCRIÇÃO DE ALERTAS -->
+  <div id="subscription-modal-backdrop" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden opacity-0 transition-opacity duration-200">
+    <div class="fixed inset-x-0 bottom-0 sm:inset-0 sm:flex sm:items-center sm:justify-center p-0 sm:p-4">
+      <div id="subscription-modal-content" class="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-t-2xl sm:rounded-2xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[88vh] overflow-y-auto transform translate-y-full sm:translate-y-0 transition-transform duration-200">
+        
+        <!-- Cabeçalho do Modal -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-base font-bold text-white">Subscrição de Alertas</h2>
+              <p class="text-xs text-slate-400">Escolhe que setores e operadores pretendes seguir</p>
+            </div>
+          </div>
+          <button id="close-subscriptions-btn" class="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Seletor Rápido: Setores -->
+        <div class="space-y-2">
+          <label class="text-xs font-bold uppercase tracking-wider text-slate-300">Setores de Interesse:</label>
+          <div class="grid grid-cols-2 gap-2 text-xs" id="sub-sectors-list">
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Transportes" class="sub-sector-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Transportes</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Educação" class="sub-sector-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Educação</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Saúde" class="sub-sector-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Saúde</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Função Pública" class="sub-sector-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Função Pública</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer col-span-2">
+              <input type="checkbox" value="Privado" class="sub-sector-check accent-rose-500 rounded w-4 h-4" />
+              <span class="text-slate-200 font-medium">Setor Privado e Serviços Gerais</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Seletor Rápido: Empresas / Operadores Específicos -->
+        <div class="space-y-2 pt-2 border-t border-slate-800">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold uppercase tracking-wider text-slate-300">Operadores e Serviços Frequentes:</label>
+            <button id="select-all-companies-btn" class="text-[11px] text-rose-400 hover:text-rose-300 font-medium">Selecionar Todos</button>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-xs" id="sub-companies-list">
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="CP" class="sub-company-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">CP (Comboios)</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Metro de Lisboa" class="sub-company-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Metro de Lisboa</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Carris Metropolitana" class="sub-company-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Carris Metropolitana</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Fertagus" class="sub-company-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Fertagus (Ponte 25 Abr)</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Transtejo" class="sub-company-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Transtejo Soflusa</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="STCP" class="sub-company-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">STCP (Porto)</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Professores e Educadores" class="sub-company-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Professores e Escolas</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded-lg bg-slate-850 hover:bg-slate-800 border border-slate-800 cursor-pointer">
+              <input type="checkbox" value="Médicos SNS" class="sub-company-check accent-rose-500 rounded w-4 h-4" checked />
+              <span class="text-slate-200 font-medium">Médicos / SNS</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Notificações Push & Salvar -->
+        <div class="pt-3 border-t border-slate-800 space-y-3">
+          <div class="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
+            <div>
+              <p class="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>Notificações Broadcast (Sem Registo)</span>
+                <span class="bg-emerald-500/20 text-emerald-300 text-[10px] px-1.5 py-0.2 rounded font-semibold border border-emerald-500/30">Tópicos Ativos</span>
+              </p>
+              <p class="text-[11px] text-slate-400">Recebe alertas automáticos via OneSignal Push e canal ntfy.sh</p>
+            </div>
+            <button id="test-notification-btn" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold rounded-lg border border-slate-700 transition">
+              Testar Notificação
+            </button>
+          </div>
+
+          <!-- Canal Telegram Oficial -->
+          <a href="https://t.me/GrevesPT_Alertas" target="_blank" rel="noopener noreferrer" class="w-full py-2.5 px-3 rounded-xl bg-sky-950/60 hover:bg-sky-900/60 border border-sky-800/60 text-sky-300 font-semibold text-xs flex items-center justify-center gap-2 transition shadow-sm">
+            <svg class="w-4 h-4 fill-current text-sky-400" viewBox="0 0 24 24">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+            </svg>
+            <span>Entrar no Canal de Telegram</span>
+          </a>
+
+          <!-- Redundância pública: ntfy.sh -->
+          <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between text-[11px]">
+            <span class="text-slate-400">Canal Livre sem App:</span>
+            <div class="flex items-center gap-2">
+              <a href="https://ntfy.sh/grevespt_transportes" target="_blank" rel="noopener noreferrer" class="text-sky-400 hover:text-sky-300 underline font-medium">
+                ntfy/transportes ↗
+              </a>
+              <span class="text-slate-600">•</span>
+              <a href="https://ntfy.sh/grevespt_geral" target="_blank" rel="noopener noreferrer" class="text-sky-400 hover:text-sky-300 underline font-medium">
+                ntfy/geral ↗
+              </a>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="save-subscriptions-btn" class="flex-1 py-2.5 bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-400 text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-950/50 transition">
+              Ativar & Guardar Alertas
+            </button>
+            <button id="cancel-subscriptions-btn" class="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs rounded-xl transition">
+              Cancelar
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST DE NOTIFICAÇÃO -->
+  <div id="toast" class="fixed bottom-5 right-5 max-w-sm bg-slate-900 border border-slate-700 text-white text-xs px-4 py-3 rounded-xl shadow-2xl transform translate-y-10 opacity-0 transition-all duration-300 z-50 flex items-center gap-2.5 pointer-events-none">
+    <div id="toast-icon" class="w-5 h-5 text-rose-500 shrink-0"></div>
+    <span id="toast-message" class="flex-1">Preferências guardadas!</span>
+  </div>
+
+  <!-- JAVASCRIPT MODULAR VANILLA (Sem framework com build) -->
+  <script>
+    /**
+     * GrevesPT - Aplicação Vanilla JS Offline-First
+     */
+    (function () {
+      'use strict';
+
+      // Dados de Fallback realistas para Portugal (caso greves.json falhe ou offline antes da primeira carga)
+      const FALLBACK_STRIKES = [
+        {
+          id: 'cp-2026-smaq-01',
+          empresa: 'CP - Comboios de Portugal',
+          empresaSigla: 'CP',
+          setor: 'Transportes',
+          regiao: 'Nacional',
+          estado: 'Serviços Mínimos Decretados',
+          gravidade: 'alta',
+          dataInicio: '2026-10-18T00:00:00',
+          dataFim: '2026-10-19T23:59:59',
+          horario: '00h00 às 24h00 (48 horas)',
+          sindicato: 'SMAQ / SFRCI / SNTSF',
+          motivo: 'Revisão da tabela salarial e cumprimento do Acordo de Empresa',
+          servicosMinimos: 'O Tribunal Arbitral do CES decretou serviços mínimos de cerca de 25% na circulação média de comboios Urbanos de Lisboa e Porto, Regionais e Longo Curso (Alfa Pendular e Intercidades).',
+          impacto: 'Fortes perturbações em todo o país nos dias 18 e 19 de outubro, com atrasos residuais no início da manhã de 20 de outubro.',
+          alternativas: 'Utilizar serviços rodoviários expresso (Rede Expressos, FlixBus) para longo curso e linhas metropolitanas com reforço.',
+          fonteOficial: 'https://www.cp.pt/passageiros/pt/consultar-horarios/avisos/greve',
+          fonteNome: 'Avisos Oficiais CP / CES',
+          atualizadoEm: '2026-10-14T08:30:00Z'
+        },
+        {
+          id: 'metro-lisboa-2026-02',
+          empresa: 'Metropolitano de Lisboa',
+          empresaSigla: 'Metro de Lisboa',
+          setor: 'Transportes',
+          regiao: 'Área Metropolitana de Lisboa',
+          estado: 'Confirmada',
+          gravidade: 'alta',
+          dataInicio: '2026-10-21T05:00:00',
+          dataFim: '2026-10-21T10:00:00',
+          horario: '05h00 às 10h00 (Reabertura prevista às 10h30)',
+          sindicato: 'STRUP / FECTRANS',
+          motivo: 'Condições de trabalho, falta de operacionais de estação e progressão na carreira',
+          servicosMinimos: 'Não estão previstos comboios em circulação durante o período de paralisação (estatuto não abrange serviços mínimos fora de períodos prolongados). As estações permanecerão encerradas.',
+          impacto: 'Linhas Azul, Amarela, Verde e Vermelha totalmente encerradas até cerca das 10h30 da manhã. Forte sobrecarga nos autocarros Carris.',
+          alternativas: 'Reforço de carreiras Carris (especialmente 736, 744, 750, 783). Recomenda-se antecipar deslocações ou teletrabalho.',
+          fonteOficial: 'https://www.metrolisboa.pt/avisos/',
+          fonteNome: 'Metropolitano de Lisboa',
+          atualizadoEm: '2026-10-13T17:15:00Z'
+        },
+        {
+          id: 'carris-metropolitana-2026-03',
+          empresa: 'Carris Metropolitana',
+          empresaSigla: 'Carris Metropolitana',
+          setor: 'Transportes',
+          regiao: 'Margem Sul',
+          estado: 'Pré-Aviso',
+          gravidade: 'media',
+          dataInicio: '2026-10-24T00:00:00',
+          dataFim: '2026-10-24T23:59:59',
+          horario: '24 Horas',
+          sindicato: 'SNMT - Sindicato Nacional dos Motoristas de Transportes',
+          motivo: 'Reivindicação de subsídio de turno e pausas de descanso adequadas nas rotas intermunicipais',
+          servicosMinimos: 'Em apreciação pelo Conselho Económico e Social (CES). Prevê-se a garantia de ligações a polos hospitalares e centros de saúde.',
+          impacto: 'Supressões significativas nas linhas das áreas 3 e 4 (Almada, Seixal, Sesimbra, Setúbal e Palmela).',
+          alternativas: 'Utilização da Fertagus e MTS (Metro Transportes do Sul) para atravessamento do rio e eixos urbanos.',
+          fonteOficial: 'https://www.carrismetropolitana.pt/avisos/',
+          fonteNome: 'Carris Metropolitana Alertas',
+          atualizadoEm: '2026-10-14T07:00:00Z'
+        },
+        {
+          id: 'fertagus-2026-04',
+          empresa: 'Fertagus',
+          empresaSigla: 'Fertagus',
+          setor: 'Transportes',
+          regiao: 'Margem Sul',
+          estado: 'Pré-Aviso',
+          gravidade: 'media',
+          dataInicio: '2026-10-28T05:30:00',
+          dataFim: '2026-10-28T23:00:00',
+          horario: 'Período integral de operação ferroviária',
+          sindicato: 'SMAQ (Maquinistas)',
+          motivo: 'Solidariedade com o setor ferroviário e negociação coletiva de empresa privada concessionária',
+          servicosMinimos: 'Pedido de fixação de serviços mínimos remetido ao CES. Habitualmente asseguram 25% a 33% dos comboios em hora de ponta.',
+          impacto: 'Perturbação na ligação Setúbal/Coina - Lisboa (Roma-Areeiro) através da Ponte 25 de Abril.',
+          alternativas: 'Barcos da Transtejo/Soflusa a partir do Barreiro/Cacilhas ou autocarros Carris Metropolitana via Ponte Vasco da Gama/Ponte 25 de Abril.',
+          fonteOficial: 'https://www.fertagus.pt/pt/alertas',
+          fonteNome: 'Fertagus Informação ao Cliente',
+          atualizadoEm: '2026-10-12T14:40:00Z'
+        },
+        {
+          id: 'transtejo-soflusa-2026-05',
+          empresa: 'Transtejo Soflusa',
+          empresaSigla: 'Transtejo',
+          setor: 'Transportes',
+          regiao: 'Área Metropolitana de Lisboa',
+          estado: 'Serviços Mínimos Decretados',
+          gravidade: 'alta',
+          dataInicio: '2026-10-22T06:00:00',
+          dataFim: '2026-10-22T09:30:00',
+          horario: '06h00 às 09h30 e 17h00 às 19h30 (Horas de Ponta)',
+          sindicato: 'Sindicato dos Fluviais e FECTRANS',
+          motivo: 'Negociação da escala de serviço dos novos navios elétricos e valorização salarial',
+          servicosMinimos: 'Garantidos apenas 2 navios por hora na ligação Cacilhas - Cais do Sodré e 1 navio por hora na ligação Barreiro - Terreiro do Paço.',
+          impacto: 'Filas com tempo de espera superior a 45 minutos nos terminais fluviais da Margem Sul.',
+          alternativas: 'Comboio Fertagus pela Ponte 25 de Abril ou autocarro TST/Carris Metropolitana.',
+          fonteOficial: 'https://ttsl.pt/passageiros/avisos-de-servico/',
+          fonteNome: 'Transtejo Soflusa Avisos',
+          atualizadoEm: '2026-10-14T06:10:00Z'
+        },
+        {
+          id: 'educacao-professores-2026-06',
+          empresa: 'Escolas Públicas e Agrupamentos',
+          empresaSigla: 'Professores e Educadores',
+          setor: 'Educação',
+          regiao: 'Nacional',
+          estado: 'Confirmada',
+          gravidade: 'alta',
+          dataInicio: '2026-10-27T08:00:00',
+          dataFim: '2026-10-27T18:00:00',
+          horario: 'Durante todo o período letivo',
+          sindicato: 'FENPROF / STOP / ASPL / SEPLEU',
+          motivo: 'Recuperação integral do tempo de serviço docente, regime de aposentação e horários de trabalho',
+          servicosMinimos: 'Serviços mínimos decretados pelo Colégio Arbitral apenas para apoio a alunos com necessidades de saúde especiais e refeições prioritárias.',
+          impacto: 'Elevada probabilidade de encerramento total ou parcial de escolas do pré-escolar, 1.º, 2.º, 3.º ciclos e secundárias em todo o território nacional.',
+          alternativas: 'Contactar os agrupamentos de escolas antes de enviar os educandos para confirmar o funcionamento dos estabelecimentos.',
+          fonteOficial: 'https://www.fenprof.pt',
+          fonteNome: 'FENPROF Comunicados',
+          atualizadoEm: '2026-10-13T11:00:00Z'
+        },
+        {
+          id: 'saude-medicos-2026-07',
+          empresa: 'Serviço Nacional de Saúde (SNS)',
+          empresaSigla: 'Médicos SNS',
+          setor: 'Saúde',
+          regiao: 'Nacional',
+          estado: 'Confirmada',
+          gravidade: 'alta',
+          dataInicio: '2026-10-29T00:00:00',
+          dataFim: '2026-10-30T23:59:59',
+          horario: '48 Horas',
+          sindicato: 'FNAM - Federação Nacional dos Médicos / SIM',
+          motivo: 'Valorização das grelhas salariais, redução do horário semanal e atratividade da carreira médica no SNS',
+          servicosMinimos: 'Serviços de urgência hospitalar (112 e triagem de Manchester laranja/vermelha), bloco de partos, cuidados intensivos, quimioterapia e hemodiálise totalmente salvaguardados a 100%.',
+          impacto: 'Adiamento em massa de consultas externas programadas e cirurgias não urgentes nos hospitais públicos e USF/Centros de Saúde.',
+          alternativas: 'Em caso de dúvida clínica, ligar para o SNS 24 (808 24 24 24) antes de se deslocar às urgências.',
+          fonteOficial: 'https://www.fnam.pt',
+          fonteNome: 'FNAM / Ministério da Saúde',
+          atualizadoEm: '2026-10-12T19:20:00Z'
+        },
+        {
+          id: 'funcao-publica-irn-2026-08',
+          empresa: 'Instituto dos Registos e do Notariado (IRN)',
+          empresaSigla: 'IRN / Lojas de Cidadão',
+          setor: 'Função Pública',
+          regiao: 'Nacional',
+          estado: 'Desconvocada',
+          gravidade: 'baixa',
+          dataInicio: '2026-10-15T09:00:00',
+          dataFim: '2026-10-15T17:00:00',
+          horario: 'Horário de atendimento ao público',
+          sindicato: 'SNR - Sindicato Nacional dos Registos',
+          motivo: 'Acordo alcançado com o Ministério da Justiça quanto ao suplemento de fixação e revisão da carreira',
+          servicosMinimos: 'Greve desconvocada após assinatura de memorando de entendimento. Atendimento normal restabelecido em todas as conservatórias.',
+          impacto: 'Nenhum impacto previsto. Agendamentos para renovação de Cartão de Cidadão e Passaporte mantêm-se normais.',
+          alternativas: 'Utilizar o portal ePortugal.gov.pt para renovações digitais com chave móvel digital.',
+          fonteOficial: 'https://irn.justica.gov.pt',
+          fonteNome: 'Portal da Justiça / IRN',
+          atualizadoEm: '2026-10-14T08:00:00Z'
+        },
+        {
+          id: 'stcp-porto-2026-09',
+          empresa: 'STCP - Sociedade de Transportes Colectivos do Porto',
+          empresaSigla: 'STCP',
+          setor: 'Transportes',
+          regiao: 'Porto',
+          estado: 'Pré-Aviso',
+          gravidade: 'media',
+          dataInicio: '2026-11-03T00:00:00',
+          dataFim: '2026-11-03T23:59:59',
+          horario: '24 Horas',
+          sindicato: 'SNMT / FECTRANS',
+          motivo: 'Aumento salarial intercalar e melhoria das instalações de apoio aos motoristas de autocarros',
+          servicosMinimos: 'A definir pelo Tribunal Arbitral do CES.',
+          impacto: 'Perturbação nas principais carreiras de autocarro do Porto, Gaia, Matosinhos e Gondomar.',
+          alternativas: 'Utilização da rede do Metro do Porto e comboios urbanos CP da Linha do Minho/Douro.',
+          fonteOficial: 'https://www.stcp.pt',
+          fonteNome: 'STCP Notícias',
+          atualizadoEm: '2026-10-11T16:00:00Z'
+        }
+      ];
+
+      // Estado Global da Aplicação
+      let allStrikes = [];
+      let currentSector = 'Todos';
+      let currentRegion = 'Todas';
+      let searchQuery = '';
+      let filterOnlySubscriptions = false;
+      let deferredInstallPrompt = null;
+
+      // Elementos do DOM
+      const strikesListEl = document.getElementById('strikes-list');
+      const emptyStateEl = document.getElementById('empty-state');
+      const searchInput = document.getElementById('search-input');
+      const clearSearchBtn = document.getElementById('clear-search-btn');
+      const resultsCountEl = document.getElementById('results-count');
+      const lastUpdatedEl = document.getElementById('last-updated-text');
+      const offlineBanner = document.getElementById('offline-banner');
+      const iosBanner = document.getElementById('ios-install-banner');
+      const dismissIosBannerBtn = document.getElementById('dismiss-ios-banner');
+      const pwaInstallBtn = document.getElementById('pwa-install-btn');
+      const refreshBtn = document.getElementById('refresh-data-btn');
+      const refreshIcon = document.getElementById('refresh-icon');
+      const resetFiltersBtn = document.getElementById('reset-filters-btn');
+      const toggleMySubsBtn = document.getElementById('toggle-my-subs-btn');
+      const subsFilterIndicator = document.getElementById('subs-filter-indicator');
+      const subBadgeCount = document.getElementById('sub-badge-count');
+
+      // Modal Elements
+      const openSubsBtn = document.getElementById('open-subscriptions-btn');
+      const closeSubsBtn = document.getElementById('close-subscriptions-btn');
+      const cancelSubsBtn = document.getElementById('cancel-subscriptions-btn');
+      const saveSubsBtn = document.getElementById('save-subscriptions-btn');
+      const subModalBackdrop = document.getElementById('subscription-modal-backdrop');
+      const subModalContent = document.getElementById('subscription-modal-content');
+      const selectAllCompaniesBtn = document.getElementById('select-all-companies-btn');
+      const testNotificationBtn = document.getElementById('test-notification-btn');
+
+      // Inicialização
+      window.addEventListener('DOMContentLoaded', () => {
+        initOfflineDetection();
+        initIOSDetection();
+        initPWAInstallPrompt();
+        initSubscriptionsUI();
+        registerServiceWorker();
+        loadStrikesData();
+        setupEventListeners();
+      });
+
+      // 1. CARREGAMENTO DOS DADOS COM RESILIÊNCIA OFFLINE
+      async function loadStrikesData() {
+        showLoadingState();
+        try {
+          const response = await fetch('./greves.json?v=' + Date.now(), {
+            cache: 'no-cache'
+          });
+          if (!response.ok) {
+            throw new Error('Falha HTTP ao carregar greves.json');
+          }
+          const data = await response.json();
+          if (Array.isArray(data) && data.length > 0) {
+            allStrikes = data;
+            lastUpdatedEl.textContent = 'Atualizado via rede às ' + formatCurrentTime();
+          } else {
+            allStrikes = FALLBACK_STRIKES;
+            lastUpdatedEl.textContent = 'Dados de contingência';
+          }
+        } catch (error) {
+          console.warn('[GrevesPT] Erro na rede, a usar fallback realista:', error);
+          allStrikes = FALLBACK_STRIKES;
+          lastUpdatedEl.textContent = 'Modo Local / Offline (' + formatCurrentTime() + ')';
+        }
+
+        renderStrikes();
+        updateSubBadge();
+      }
+
+      function showLoadingState() {
+        resultsCountEl.textContent = 'A atualizar greves em tempo real...';
+        refreshIcon.classList.add('animate-spin');
+      }
+
+      function hideLoadingState() {
+        refreshIcon.classList.remove('animate-spin');
+      }
+
+      // 2. RENDERIZAÇÃO DOS CARTÕES DE GREVE
+      function renderStrikes() {
+        hideLoadingState();
+
+        const userSubscriptions = getSavedSubscriptions();
+
+        const filtered = allStrikes.filter((strike) => {
+          // Filtro de Texto
+          if (searchQuery.trim() !== '') {
+            const q = searchQuery.toLowerCase().trim();
+            const matchText = (
+              strike.empresa.toLowerCase() + ' ' +
+              (strike.empresaSigla || '').toLowerCase() + ' ' +
+              strike.setor.toLowerCase() + ' ' +
+              strike.regiao.toLowerCase() + ' ' +
+              strike.motivo.toLowerCase() + ' ' +
+              (strike.sindicato || '').toLowerCase()
+            );
+            if (!matchText.includes(q)) return false;
+          }
+
+          // Filtro de Setor
+          if (currentSector !== 'Todos' && strike.setor !== currentSector) {
+            return false;
+          }
+
+          // Filtro de Região
+          if (currentRegion !== 'Todas' && strike.regiao !== currentRegion) {
+            return false;
+          }
+
+          // Filtro "Apenas Minhas Subscrições"
+          if (filterOnlySubscriptions) {
+            const hasSector = userSubscriptions.sectors.includes(strike.setor);
+            const hasCompany = userSubscriptions.companies.some(c => 
+              strike.empresa.toLowerCase().includes(c.toLowerCase()) || 
+              (strike.empresaSigla && strike.empresaSigla.toLowerCase() === c.toLowerCase())
+            );
+            if (!hasSector && !hasCompany) {
+              return false;
+            }
+          }
+
+          return true;
+        });
+
+        // Atualizar contador
+        resultsCountEl.textContent = `A mostrar ${filtered.length} de ${allStrikes.length} ${allStrikes.length === 1 ? 'alerta' : 'alertas'}`;
+
+        if (filtered.length === 0) {
+          strikesListEl.innerHTML = '';
+          emptyStateEl.classList.remove('hidden');
+          return;
+        }
+
+        emptyStateEl.classList.add('hidden');
+
+        strikesListEl.innerHTML = filtered.map((strike) => createStrikeCardHtml(strike)).join('');
+
+        // Ligar eventos dentro dos novos cartões (Partilha e Calendário)
+        attachCardActionListeners();
+      }
+
+      // 3. CONSTRUTOR DO HTML DO CARTÃO DETALHADO
+      function createStrikeCardHtml(strike) {
+        // Estilos de Gravidade & Borda
+        let borderClass = 'border-l-4 border-l-rose-500';
+        let bgGlow = 'hover:border-rose-500/40';
+        let urgencyBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">ALTO IMPACTO</span>';
+
+        if (strike.gravidade === 'media') {
+          borderClass = 'border-l-4 border-l-amber-500';
+          bgGlow = 'hover:border-amber-500/40';
+          urgencyBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">IMPACTO MÉDIO</span>';
+        } else if (strike.gravidade === 'baixa' || strike.estado === 'Desconvocada') {
+          borderClass = 'border-l-4 border-l-emerald-500';
+          bgGlow = 'hover:border-emerald-500/40';
+          urgencyBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">DESCONVOCADA</span>';
+        }
+
+        // Estilos do Estado
+        let estadoBadge = '';
+        if (strike.estado === 'Confirmada') {
+          estadoBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-rose-600/20 text-rose-400 border border-rose-600/40">🔴 Confirmada</span>';
+        } else if (strike.estado === 'Serviços Mínimos Decretados') {
+          estadoBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">⚖️ Serv. Mínimos Decretados</span>';
+        } else if (strike.estado === 'Pré-Aviso') {
+          estadoBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">⚠️ Pré-Aviso Convocado</span>';
+        } else if (strike.estado === 'Desconvocada') {
+          estadoBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">✅ Desconvocada</span>';
+        }
+
+        const formattedDateRange = formatDateRange(strike.dataInicio, strike.dataFim);
+        const relativeCountdown = getRelativeCountdown(strike.dataInicio, strike.dataFim, strike.estado);
+
+        // Operador visual accent
+        const operatorInitial = strike.empresaSigla ? strike.empresaSigla.slice(0, 3) : strike.empresa.slice(0, 3);
+
+        return `
+          <article class="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5 flex flex-col justify-between transition-all duration-200 shadow-md ${borderClass} ${bgGlow}">
+            <div class="space-y-3.5">
+              
+              <!-- Topo do Cartão: Empresa, Gravidade e Estado -->
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-black text-xs text-white uppercase tracking-wider shrink-0 shadow-inner">
+                    ${operatorInitial}
+                  </div>
+                  <div>
+                    <h2 class="text-base sm:text-lg font-bold text-white tracking-tight leading-snug">${escapeHtml(strike.empresa)}</h2>
+                    <div class="flex flex-wrap items-center gap-2 mt-0.5">
+                      <span class="text-xs font-medium text-slate-400 flex items-center gap-1">
+                        <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        ${escapeHtml(strike.regiao)}
+                      </span>
+                      <span class="text-slate-600">•</span>
+                      <span class="text-xs text-slate-400 font-medium">${escapeHtml(strike.setor)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="text-right shrink-0">
+                  ${urgencyBadge}
+                </div>
+              </div>
+
+              <!-- Badges de Estado e Contagem Regressiva -->
+              <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+                <div>${estadoBadge}</div>
+                <span class="text-xs font-semibold text-slate-300 bg-slate-800/70 px-2 py-0.5 rounded border border-slate-700/60">
+                  ${relativeCountdown}
+                </span>
+              </div>
+
+              <!-- Datas & Horários -->
+              <div class="bg-slate-950/70 rounded-lg p-3 border border-slate-800/80 space-y-1.5 text-xs text-slate-300">
+                <div class="flex items-center gap-2">
+                  <svg class="w-4 h-4 text-rose-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  <span class="font-bold text-white">Datas:</span> <span>${formattedDateRange}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  <span class="font-bold text-white">Horário / Turno:</span> <span>${escapeHtml(strike.horario)}</span>
+                </div>
+                ${strike.sindicato ? `
+                  <div class="flex items-center gap-2 text-slate-400 pt-0.5">
+                    <svg class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                    <span><strong>Sindicatos:</strong> ${escapeHtml(strike.sindicato)}</span>
+                  </div>
+                ` : ''}
+              </div>
+
+              <!-- Bloco Destaque: Resumo dos Serviços Mínimos -->
+              <div class="bg-amber-950/20 border border-amber-500/25 rounded-lg p-3 text-xs space-y-1">
+                <div class="flex items-center gap-1.5 font-bold text-amber-300">
+                  <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/></svg>
+                  <span>Serviços Mínimos Decretados:</span>
+                </div>
+                <p class="text-amber-100/90 leading-relaxed">${escapeHtml(strike.servicosMinimos)}</p>
+              </div>
+
+              <!-- Motivo & Impacto -->
+              <div class="text-xs text-slate-300 space-y-1.5">
+                <p><strong class="text-slate-200">Reivindicação:</strong> ${escapeHtml(strike.motivo)}</p>
+                ${strike.impacto ? `<p><strong class="text-rose-300">Impacto previsto:</strong> ${escapeHtml(strike.impacto)}</p>` : ''}
+                ${strike.alternativas ? `<p class="text-slate-400"><strong class="text-slate-300">Alternativas sugeridas:</strong> ${escapeHtml(strike.alternativas)}</p>` : ''}
+              </div>
+
+            </div>
+
+            <!-- BOTÕES DE AÇÃO: Fonte Oficial, Calendário e Partilha -->
+            <div class="mt-4 pt-3.5 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+              
+              <!-- Link Fonte Oficial -->
+              <a href="${strike.fonteOficial}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-slate-300 hover:text-white font-medium bg-slate-800/80 hover:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-700/60 transition">
+                <svg class="w-3.5 h-3.5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                <span>${escapeHtml(strike.fonteNome || 'Fonte Oficial')}</span>
+              </a>
+
+              <div class="flex items-center gap-1.5">
+                
+                <!-- Botão Calendário (.ics e Google Calendar) -->
+                <div class="relative group">
+                  <button class="inline-flex items-center gap-1 text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-700 transition" title="Adicionar ao Calendário">
+                    <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    <span class="hidden sm:inline">Calendário</span>
+                  </button>
+                  <div class="absolute right-0 bottom-full mb-1.5 hidden group-hover:flex flex-col bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 z-20 w-44">
+                    <button data-action="google-calendar" data-strike-id="${strike.id}" class="calendar-btn text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 flex items-center gap-2">
+                      <span class="w-2 h-2 rounded-full bg-blue-400"></span> Google Calendar
+                    </button>
+                    <button data-action="download-ics" data-strike-id="${strike.id}" class="calendar-btn text-left px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 flex items-center gap-2">
+                      <span class="w-2 h-2 rounded-full bg-amber-400"></span> Descarregar (.ics)
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Botão Partilhar WhatsApp -->
+                <button data-action="share-whatsapp" data-strike-id="${strike.id}" class="share-btn inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-800/40 px-2.5 py-1.5 rounded-lg transition" title="Partilhar no WhatsApp">
+                  <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.311.045-.698.059-1.146-.086-.301-.097-.688-.231-1.196-.452-2.106-.913-3.488-3.056-3.593-3.197-.105-.141-.856-1.14-.856-2.174 0-1.034.542-1.542.735-1.752.193-.21.423-.263.564-.263.141 0 .282.002.405.008.13.006.305-.049.477.364.177.424.605 1.479.658 1.587.053.108.089.235.018.377-.071.141-.107.23-.213.354-.106.124-.222.277-.318.372-.106.106-.217.221-.093.434.124.213.551.908 1.181 1.47 1.085.968 1.637 1.272 1.849 1.378.212.106.336.088.46-.053.124-.141.53-.618.672-.83.141-.212.282-.177.476-.106.194.071 1.235.582 1.447.688.212.106.353.159.406.247.052.088.052.513-.092.918z"/></svg>
+                  <span class="hidden sm:inline">WhatsApp</span>
+                </button>
+
+                <!-- Botão Partilhar Telegram -->
+                <button data-action="share-telegram" data-strike-id="${strike.id}" class="share-btn inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 bg-sky-950/40 hover:bg-sky-900/50 border border-sky-800/40 px-2.5 py-1.5 rounded-lg transition" title="Partilhar no Telegram">
+                  <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
+                  <span class="hidden sm:inline">Telegram</span>
+                </button>
+
+              </div>
+            </div>
+
+          </article>
+        `;
+      }
+
+      // 4. LÓGICA DE CALENDÁRIO & PARTILHA
+      function attachCardActionListeners() {
+        document.querySelectorAll('.calendar-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const strikeId = e.currentTarget.getAttribute('data-strike-id');
+            const action = e.currentTarget.getAttribute('data-action');
+            const strike = allStrikes.find(s => s.id === strikeId);
+            if (!strike) return;
+
+            if (action === 'google-calendar') {
+              openGoogleCalendar(strike);
+            } else if (action === 'download-ics') {
+              downloadIcsFile(strike);
+            }
+          });
+        });
+
+        document.querySelectorAll('.share-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const strikeId = e.currentTarget.getAttribute('data-strike-id');
+            const action = e.currentTarget.getAttribute('data-action');
+            const strike = allStrikes.find(s => s.id === strikeId);
+            if (!strike) return;
+
+            const shareText = `⚠️ *GrevesPT Alerta*: Greve em ${strike.empresa} (${strike.setor})\n` +
+              `📅 Datas: ${formatDateRange(strike.dataInicio, strike.dataFim)}\n` +
+              `⏰ Horário: ${strike.horario}\n` +
+              `⚖️ Serviços Mínimos: ${strike.servicosMinimos}\n` +
+              `ℹ️ Mais info em: ${window.location.origin}`;
+
+            if (action === 'share-whatsapp') {
+              const url = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+              window.open(url, '_blank');
+            } else if (action === 'share-telegram') {
+              const url = `https://t.me/share/url?url=${encodeURIComponent(window.location.origin)}&text=${encodeURIComponent(shareText)}`;
+              window.open(url, '_blank');
+            }
+          });
+        });
+      }
+
+      function openGoogleCalendar(strike) {
+        const start = formatIsoForCalendar(strike.dataInicio);
+        const end = formatIsoForCalendar(strike.dataFim);
+        const title = `Greve ${strike.empresa} - ${strike.estado}`;
+        const details = `Alerta GrevesPT:\nEmpresa: ${strike.empresa}\nSetor: ${strike.setor}\nRegião: ${strike.regiao}\nHorário: ${strike.horario}\nServiços Mínimos: ${strike.servicosMinimos}\nFonte: ${strike.fonteOficial}`;
+        const location = strike.regiao;
+
+        const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${start}/${end}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(location)}`;
+        window.open(gCalUrl, '_blank');
+        showToast('A abrir Google Calendar...');
+      }
+
+      function downloadIcsFile(strike) {
+        const start = formatIsoForCalendar(strike.dataInicio);
+        const end = formatIsoForCalendar(strike.dataFim);
+        const icsContent = [
+          'BEGIN:VCALENDAR',
+          'VERSION:2.0',
+          'PRODID:-//GrevesPT//PT',
+          'CALSCALE:GREGORIAN',
+          'METHOD:PUBLISH',
+          'BEGIN:VEVENT',
+          `UID:${strike.id}@greves.pt`,
+          `DTSTAMP:${formatIsoForCalendar(new Date().toISOString())}`,
+          `DTSTART:${start}`,
+          `DTEND:${end}`,
+          `SUMMARY:Greve ${strike.empresa} (${strike.estado})`,
+          `DESCRIPTION:Serviços Mínimos: ${strike.servicosMinimos.replace(/,/g, '\\,')} | Horário: ${strike.horario}`,
+          `LOCATION:${strike.regiao}`,
+          `URL:${strike.fonteOficial}`,
+          'STATUS:CONFIRMED',
+          'END:VEVENT',
+          'END:VCALENDAR'
+        ].join('\r\n');
+
+        const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `greve-${strike.empresaSigla || 'grevespt'}-${strike.id}.ics`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('Ficheiro de calendário (.ics) descarregado!');
+      }
+
+      // 5. EVENT LISTENERS E CONTROLO DE FILTROS
+      function setupEventListeners() {
+        // Pesquisa em tempo real com debounce
+        let searchTimeout;
+        searchInput.addEventListener('input', (e) => {
+          clearTimeout(searchTimeout);
+          searchTimeout = setTimeout(() => {
+            searchQuery = e.target.value;
+            clearSearchBtn.classList.toggle('hidden', searchQuery.length === 0);
+            renderStrikes();
+          }, 150);
+        });
+
+        clearSearchBtn.addEventListener('click', () => {
+          searchInput.value = '';
+          searchQuery = '';
+          clearSearchBtn.classList.add('hidden');
+          renderStrikes();
+          searchInput.focus();
+        });
+
+        // Chips de Setor
+        document.querySelectorAll('.sector-chip').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.sector-chip').forEach(b => {
+              b.classList.remove('bg-rose-600', 'text-white', 'active-filter');
+              b.classList.add('bg-slate-800', 'text-slate-300');
+            });
+            e.currentTarget.classList.remove('bg-slate-800', 'text-slate-300');
+            e.currentTarget.classList.add('bg-rose-600', 'text-white', 'active-filter');
+
+            currentSector = e.currentTarget.getAttribute('data-sector');
+            renderStrikes();
+          });
+        });
+
+        // Chips de Região
+        document.querySelectorAll('.region-chip').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.region-chip').forEach(b => {
+              b.classList.remove('bg-amber-600', 'text-white', 'active-filter');
+              b.classList.add('bg-slate-800', 'text-slate-300');
+            });
+            e.currentTarget.classList.remove('bg-slate-800', 'text-slate-300');
+            e.currentTarget.classList.add('bg-amber-600', 'text-white', 'active-filter');
+
+            currentRegion = e.currentTarget.getAttribute('data-region');
+            renderStrikes();
+          });
+        });
+
+        // Alternar "Apenas Minhas Subscrições"
+        toggleMySubsBtn.addEventListener('click', () => {
+          filterOnlySubscriptions = !filterOnlySubscriptions;
+          if (filterOnlySubscriptions) {
+            subsFilterIndicator.classList.remove('bg-slate-600');
+            subsFilterIndicator.classList.add('bg-amber-400');
+            toggleMySubsBtn.classList.add('underline');
+            showToast('A mostrar apenas as tuas subscrições');
+          } else {
+            subsFilterIndicator.classList.remove('bg-amber-400');
+            subsFilterIndicator.classList.add('bg-slate-600');
+            toggleMySubsBtn.classList.remove('underline');
+          }
+          renderStrikes();
+        });
+
+        // Botão de Repor Filtros
+        resetFiltersBtn.addEventListener('click', () => {
+          searchInput.value = '';
+          searchQuery = '';
+          clearSearchBtn.classList.add('hidden');
+          currentSector = 'Todos';
+          currentRegion = 'Todas';
+          filterOnlySubscriptions = false;
+          subsFilterIndicator.classList.remove('bg-amber-400');
+          subsFilterIndicator.classList.add('bg-slate-600');
+          toggleMySubsBtn.classList.remove('underline');
+
+          // Reset UI chips
+          document.querySelectorAll('.sector-chip').forEach(b => {
+            const isTodos = b.getAttribute('data-sector') === 'Todos';
+            b.classList.toggle('bg-rose-600', isTodos);
+            b.classList.toggle('text-white', isTodos);
+            b.classList.toggle('bg-slate-800', !isTodos);
+            b.classList.toggle('text-slate-300', !isTodos);
+          });
+          document.querySelectorAll('.region-chip').forEach(b => {
+            const isTodas = b.getAttribute('data-region') === 'Todas';
+            b.classList.toggle('bg-amber-600', isTodas);
+            b.classList.toggle('text-white', isTodas);
+            b.classList.toggle('bg-slate-800', !isTodas);
+            b.classList.toggle('text-slate-300', !isTodas);
+          });
+
+          renderStrikes();
+        });
+
+        // Botão Atualizar Manual
+        refreshBtn.addEventListener('click', () => {
+          loadStrikesData();
+          showToast('A verificar atualizações...');
+        });
+      }
+
+      // 6. SUBSCRIÇÃO DE ALERTAS & MODAL
+      function initSubscriptionsUI() {
+        const saved = getSavedSubscriptions();
+
+        // Aplicar às checkboxes do modal
+        document.querySelectorAll('.sub-sector-check').forEach(cb => {
+          cb.checked = saved.sectors.includes(cb.value);
+        });
+
+        document.querySelectorAll('.sub-company-check').forEach(cb => {
+          cb.checked = saved.companies.includes(cb.value);
+        });
+
+        updateSubBadge();
+
+        openSubsBtn.addEventListener('click', openSubscriptionModal);
+        closeSubsBtn.addEventListener('click', closeSubscriptionModal);
+        cancelSubsBtn.addEventListener('click', closeSubscriptionModal);
+
+        subModalBackdrop.addEventListener('click', (e) => {
+          if (e.target === subModalBackdrop) closeSubscriptionModal();
+        });
+
+        selectAllCompaniesBtn.addEventListener('click', () => {
+          const checks = document.querySelectorAll('.sub-company-check');
+          const allChecked = Array.from(checks).every(c => c.checked);
+          checks.forEach(c => c.checked = !allChecked);
+          selectAllCompaniesBtn.textContent = allChecked ? 'Selecionar Todos' : 'Desmarcar Todos';
+        });
+
+        saveSubsBtn.addEventListener('click', async () => {
+          const selectedSectors = Array.from(document.querySelectorAll('.sub-sector-check:checked')).map(c => c.value);
+          const selectedCompanies = Array.from(document.querySelectorAll('.sub-company-check:checked')).map(c => c.value);
+
+          const toSave = {
+            sectors: selectedSectors,
+            companies: selectedCompanies,
+            updatedAt: new Date().toISOString()
+          };
+
+          localStorage.setItem('grevespt_alert_subscriptions', JSON.stringify(toSave));
+          updateSubBadge();
+          closeSubscriptionModal();
+
+          // Sincronização Broadcast no OneSignal (apenas se configurado com AppID real)
+          if (window.hasValidOneSignalAppId && window.OneSignalDeferred) {
+            window.OneSignalDeferred.push(async function(OneSignal) {
+              try {
+                // Solicita permissão se ainda não foi concedida
+                if (OneSignal.Notifications && !OneSignal.Notifications.permission) {
+                  await OneSignal.Notifications.requestPermission();
+                }
+
+                // Cria tags limpas baseadas nas escolhas do utilizador
+                const tagsToSet = {};
+                selectedSectors.forEach(s => {
+                  const slug = s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+                  tagsToSet[`setor_${slug}`] = "true";
+                });
+                selectedCompanies.forEach(c => {
+                  const slug = c.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "_");
+                  tagsToSet[`empresa_${slug}`] = "true";
+                });
+
+                if (OneSignal.User && OneSignal.User.addTags) {
+                  await OneSignal.User.addTags(tagsToSet);
+                  console.log('[GrevesPT] Tags OneSignal sincronizadas:', tagsToSet);
+                }
+              } catch (err) {
+                console.warn('[OneSignal] Erro ao sincronizar tags:', err);
+              }
+            });
+          }
+
+          showToast('Alertas e tópicos broadcast ativos no teu telemóvel!');
+
+          if (filterOnlySubscriptions) {
+            renderStrikes();
+          }
+        });
+
+        testNotificationBtn.addEventListener('click', async () => {
+          if (!('Notification' in window)) {
+            alert('O teu navegador não suporta a API de Notificações Web.');
+            return;
+          }
+
+          let perm = Notification.permission;
+          if (perm === 'default') {
+            perm = await Notification.requestPermission();
+          }
+
+          if (perm === 'granted') {
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.ready.then(reg => {
+                reg.showNotification('GrevesPT • Alerta de Teste', {
+                  body: 'Notificações ativas! Receberás alertas das empresas e setores que subscreveste.',
+                  icon: '/pwa-192x192.png',
+                  badge: '/pwa-192x192.png',
+                  vibrate: [200, 100, 200],
+                  tag: 'test-notification'
+                });
+              });
+            } else {
+              new Notification('GrevesPT • Alerta de Teste', {
+                body: 'Notificações ativas! Receberás alertas das empresas e setores que subscreveste.',
+                icon: '/pwa-192x192.png'
+              });
+            }
+            showToast('Notificação de teste enviada!');
+          } else {
+            showToast('Permissão de notificações recusada no browser.');
+          }
+        });
+      }
+
+      function openSubscriptionModal() {
+        subModalBackdrop.classList.remove('hidden');
+        setTimeout(() => {
+          subModalBackdrop.classList.remove('opacity-0');
+          subModalContent.classList.remove('translate-y-full');
+        }, 10);
+      }
+
+      function closeSubscriptionModal() {
+        subModalContent.classList.add('translate-y-full');
+        subModalBackdrop.classList.add('opacity-0');
+        setTimeout(() => {
+          subModalBackdrop.classList.add('hidden');
+        }, 200);
+      }
+
+      function getSavedSubscriptions() {
+        const stored = localStorage.getItem('grevespt_alert_subscriptions');
+        if (stored) {
+          try {
+            return JSON.parse(stored);
+          } catch (e) {
+            console.warn(e);
+          }
+        }
+        // Defaults: Setores e Operadores principais
+        return {
+          sectors: ['Transportes', 'Educação', 'Saúde', 'Função Pública'],
+          companies: ['CP', 'Metro de Lisboa', 'Carris Metropolitana', 'Fertagus', 'Transtejo', 'STCP', 'Professores e Educadores', 'Médicos SNS'],
+          updatedAt: null
+        };
+      }
+
+      function updateSubBadge() {
+        const subs = getSavedSubscriptions();
+        const total = (subs.sectors ? subs.sectors.length : 0) + (subs.companies ? subs.companies.length : 0);
+        if (total > 0) {
+          subBadgeCount.textContent = total;
+          subBadgeCount.classList.remove('hidden');
+        } else {
+          subBadgeCount.classList.add('hidden');
+        }
+      }
+
+      // 7. DETETOR INTELIGENTE DE IOS (SAFARI)
+      function initIOSDetection() {
+        const userAgent = window.navigator.userAgent.toLowerCase();
+        const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
+        const isStandalone = ('standalone' in window.navigator && window.navigator.standalone === true) || 
+                             window.matchMedia('(display-mode: standalone)').matches;
+        const dismissed = localStorage.getItem('grevespt_dismiss_ios_guide') === 'true';
+
+        // Mostra o banner apenas se for dispositivo iOS, ainda não instalado em standalone e não fechado
+        if (isIOSDevice && !isStandalone && !dismissed) {
+          iosBanner.classList.remove('hidden');
+        }
+
+        dismissIosBannerBtn.addEventListener('click', () => {
+          iosBanner.classList.add('hidden');
+          localStorage.setItem('grevespt_dismiss_ios_guide', 'true');
+        });
+      }
+
+      // 8. PWA INSTALL PROMPT (Android / Chromium / Desktop)
+      function initPWAInstallPrompt() {
+        window.addEventListener('beforeinstallprompt', (e) => {
+          e.preventDefault();
+          deferredInstallPrompt = e;
+          pwaInstallBtn.classList.remove('hidden');
+          pwaInstallBtn.classList.add('inline-flex');
+        });
+
+        pwaInstallBtn.addEventListener('click', async () => {
+          if (!deferredInstallPrompt) return;
+          pwaInstallBtn.classList.add('hidden');
+          await deferredInstallPrompt.prompt();
+          const { outcome } = await deferredInstallPrompt.userChoice;
+          if (outcome === 'accepted') {
+            showToast('Aplicação GrevesPT instalada com sucesso!');
+          }
+          deferredInstallPrompt = null;
+        });
+
+        window.addEventListener('appinstalled', () => {
+          pwaInstallBtn.classList.add('hidden');
+          showToast('GrevesPT está instalada no teu dispositivo!');
+        });
+      }
+
+      // 9. GESTÃO DE REDE & STATUS OFFLINE
+      function initOfflineDetection() {
+        function updateStatus() {
+          if (navigator.onLine) {
+            offlineBanner.classList.add('hidden');
+          } else {
+            offlineBanner.classList.remove('hidden');
+            showToast('Modo Offline: Estás sem ligação à internet.');
+          }
+        }
+        window.addEventListener('online', updateStatus);
+        window.addEventListener('offline', updateStatus);
+        updateStatus();
+      }
+
+      // 10. REGISTO DO SERVICE WORKER
+      function registerServiceWorker() {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => {
+              console.log('[GrevesPT] Service Worker registado com escopo:', reg.scope);
+            })
+            .catch(err => {
+              console.warn('[GrevesPT] Falha no registo do Service Worker:', err);
+            });
+        }
+      }
+
+      // FUNÇÕES UTILITÁRIAS
+      function formatDateRange(startIso, endIso) {
+        if (!startIso) return '';
+        const d1 = new Date(startIso);
+        const d2 = endIso ? new Date(endIso) : d1;
+        
+        const optionsDay = { day: '2-digit', month: 'short' };
+        const s1 = d1.toLocaleDateString('pt-PT', optionsDay);
+        const s2 = d2.toLocaleDateString('pt-PT', { ...optionsDay, year: 'numeric' });
+
+        if (d1.toDateString() === d2.toDateString()) {
+          return `${s2}`;
+        }
+        return `${s1} a ${s2}`;
+      }
+
+      function getRelativeCountdown(startIso, endIso, estado) {
+        if (estado === 'Desconvocada') return 'Cancelada';
+        
+        const now = new Date();
+        const start = new Date(startIso);
+        const end = endIso ? new Date(endIso) : start;
+
+        const diffStartMs = start.getTime() - now.getTime();
+        const diffEndMs = end.getTime() - now.getTime();
+
+        if (diffStartMs <= 0 && diffEndMs >= 0) {
+          return '🚨 A decorrer hoje';
+        }
+        if (diffEndMs < 0) {
+          return 'Terminada';
+        }
+
+        const days = Math.ceil(diffStartMs / (1000 * 60 * 60 * 24));
+        if (days === 1) return '⏳ Começa amanhã';
+        if (days <= 0) return '🚨 Começa hoje';
+        return `⏳ Em ${days} dias`;
+      }
+
+      function formatIsoForCalendar(isoString) {
+        const d = new Date(isoString);
+        return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      }
+
+      function formatCurrentTime() {
+        const d = new Date();
+        return d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+      }
+
+      function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function showToast(message) {
+        const toast = document.getElementById('toast');
+        const toastMessage = document.getElementById('toast-message');
+        toastMessage.textContent = message;
+        toast.classList.remove('translate-y-10', 'opacity-0');
+        setTimeout(() => {
+          toast.classList.add('translate-y-10', 'opacity-0');
+        }, 3200);
+      }
+
+    })();
+  </script>
+
+</body>
+</html>

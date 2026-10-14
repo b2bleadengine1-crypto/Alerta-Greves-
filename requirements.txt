@@ -1,0 +1,16 @@
+# GrevesPT - Requisitos do Pipeline de Dados e Notificações
+# FASE 2, FASE 3 e FASE 4
+
+# IA e Structured Outputs
+google-genai>=1.0.0
+pydantic>=2.5.0
+
+# Scraper e Parsing de Notícias / RSS
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+feedparser>=6.0.10
+urllib3>=2.0.0
+
+# Notificações Web Push (VAPID)
+pywebpush>=1.14.0
+cryptography>=41.0.0

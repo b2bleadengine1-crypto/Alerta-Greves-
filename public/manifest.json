@@ -1,0 +1,56 @@
+{
+  "id": "/",
+  "name": "GrevesPT - Monitor de Greves em Portugal",
+  "short_name": "GrevesPT",
+  "description": "Acompanhamento em tempo real, serviços mínimos e alertas de greves em Portugal.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#020617",
+  "background_color": "#020617",
+  "lang": "pt-PT",
+  "categories": ["travel", "news", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Greves em Transportes",
+      "short_name": "Transportes",
+      "description": "Consultar greves nos transportes públicos da AML e nacionais",
+      "url": "/?setor=Transportes",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Alertas Subscritos",
+      "short_name": "Alertas",
+      "description": "Ver as minhas notificações e setores favoritos",
+      "url": "/?view=alerts",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}
