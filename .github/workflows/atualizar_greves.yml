@@ -1,10 +1,10 @@
-name: Monitorização e Atualização Automática de Greves (GrevesPT)
+name: Strike Monitor & Live Data Pipeline (GrevesPT)
 
 on:
   schedule:
-    # Executa a cada 4 horas (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
+    # Runs every 4 hours (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
     - cron: '0 */4 * * *'
-  workflow_dispatch: # Permite disparo manual com 1 clique no GitHub Actions
+  workflow_dispatch: # Allows one-click manual triggering from GitHub Actions UI
   push:
     paths:
       - 'scraper_greves.py'
@@ -19,52 +19,53 @@ permissions:
 
 jobs:
   scrape-and-notify:
+    name: Scrape Live Feeds & Dispatch Alerts
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - name: Checkout do Repositório
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Configurar Ambiente Python 3.11
+      - name: Set Up Python 3.11 Environment
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Instalar Dependências
+      - name: Install Pipeline Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Executar Scraper e Processamento com Gemini 2.5 Flash
+      - name: Run Scraper & Alert Dispatcher
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
-          ONESIGNAL_REST_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
+          ONESIGNAL_REST_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
         run: |
           python scraper_greves.py
 
-      - name: Verificar Alterações nos Dados (greves.json)
+      - name: Check for Data Changes in greves.json
         id: git-check
         run: |
           if [ -n "$(git status --porcelain greves.json public/greves.json greves_arquivo.json)" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "Alterações detetadas nos dados das greves."
+            echo "Changes detected in strike data files."
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "Sem alterações nos dados das greves."
+            echo "No data changes detected."
           fi
 
-      - name: Comitar e Publicar Dados Atualizados
+      - name: Commit and Push Updated Strike Data
         if: steps.git-check.outputs.has_changes == 'true'
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add greves.json public/greves.json greves_arquivo.json
-          git commit -m "chore(data): atualizar dados oficiais de greves e serviços mínimos [skip ci]"
+          git commit -m "chore(data): update strike records and minimum services [skip ci]"
           git push

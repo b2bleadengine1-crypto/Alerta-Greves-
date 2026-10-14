@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
 """
-GrevesPT - Notificador Oficial Multi-Canal (OneSignal REST API + Telegram Bot)
-Módulo: notifier.py
-Tecnologias: Python 3, Telegram Bot API (@alertagrevespt_bot), OneSignal REST API v1
+GrevesPT - Official Multi-Channel Alert Notifier
+File: notifier.py
+Language: Clean English Implementation
 
-Canais Oficiais de Produção:
-1. OneSignal Web Push:
+Environment Variables:
+- TELEGRAM_BOT_TOKEN: Bot token issued by BotFather
+- TELEGRAM_CHAT_ID: Target channel or group chat ID (defaults to "@alertagreves_pt")
+- ONESIGNAL_APP_ID: OneSignal Application ID
+- ONESIGNAL_REST_API_KEY: OneSignal REST API Key
+- GEMINI_API_KEY: Gemini API Key (optional here, used in ai_parser.py)
+
+Destinations:
+1. Telegram Bot API:
+   - Endpoint: https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/sendMessage
+   - Format: Formatted Markdown with strike details & inline action buttons
+2. OneSignal REST API:
    - Endpoint: https://api.onesignal.com/notifications
-   - Header: Authorization: Key {ONESIGNAL_REST_API_KEY}
-   - Segmento: ["Total Subscriptions"]
-2. Telegram Bot API:
-   - Bot Oficial: @alertagrevespt_bot
-   - Endpoint: https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage
-   - Botões Inline: Fonte Oficial, 📲 Partilhar no WhatsApp (https://wa.me/?text=...) e Bot Telegram
-
-Variáveis de Ambiente Necessárias:
-- GEMINI_API_KEY
-- ONESIGNAL_APP_ID
-- ONESIGNAL_REST_API_KEY
-- TELEGRAM_BOT_TOKEN
-- TELEGRAM_CHAT_ID
+   - Segment: ["Total Subscriptions"]
 """
 
 import os
@@ -38,63 +36,182 @@ except ImportError:
 HTTP_TIMEOUT = 15
 
 
-def http_post_payload(
+# ==============================================================================
+# HTTP HELPER WITH COMPREHENSIVE LOGGING
+# ==============================================================================
+
+def execute_http_post(
     url: str,
-    json_data: Optional[Dict[str, Any]] = None,
+    json_payload: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, str]] = None,
     timeout: int = HTTP_TIMEOUT
 ) -> Tuple[int, str]:
-    """Executa um POST HTTP resiliente utilizando requests ou urllib como fallback."""
-    hdrs = dict(headers or {})
-    if "Content-Type" not in hdrs:
-        hdrs["Content-Type"] = "application/json"
+    """
+    Executes an HTTP POST request using `requests` (if available) or `urllib`.
+    Provides detailed error inspection and response retrieval.
+    """
+    request_headers = dict(headers or {})
+    if "Content-Type" not in request_headers:
+        request_headers["Content-Type"] = "application/json"
 
     if requests is not None:
-        r = requests.post(url, json=json_data, headers=hdrs, timeout=timeout)
-        return r.status_code, r.text
-    else:
-        body = json.dumps(json_data or {}).encode("utf-8")
-        req = urllib.request.Request(url, data=body, headers=hdrs, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.status, resp.read().decode("utf-8", errors="replace")
-        except urllib.error.HTTPError as e:
-            return e.code, e.read().decode("utf-8", errors="replace")
-        except Exception as e:
-            raise e
+            response = requests.post(url, json=json_payload, headers=request_headers, timeout=timeout)
+            return response.status_code, response.text
+        except requests.exceptions.RequestException as req_err:
+            raise RuntimeError(f"Network error during requests.post: {req_err}") from req_err
+    else:
+        body_bytes = json.dumps(json_payload or {}).encode("utf-8")
+        req = urllib.request.Request(url, data=body_bytes, headers=request_headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                status = response.status
+                body = response.read().decode("utf-8", errors="replace")
+                return status, body
+        except urllib.error.HTTPError as http_err:
+            err_body = http_err.read().decode("utf-8", errors="replace")
+            return http_err.code, err_body
+        except urllib.error.URLError as url_err:
+            raise RuntimeError(f"Network error during urllib.request: {url_err}") from url_err
+        except Exception as general_err:
+            raise RuntimeError(f"Unexpected error during HTTP POST: {general_err}") from general_err
 
 
 # ==============================================================================
-# 1. ONESIGNAL REST API (Web Push Broadcast para Total Subscriptions)
+# 1. TELEGRAM BOT NOTIFICATIONS
 # ==============================================================================
 
-def enviar_onesignal_push(greve: Dict[str, Any]) -> bool:
+def send_telegram_alert(strike: Dict[str, Any]) -> bool:
     """
-    Envia notificação Web Push usando a API REST oficial da OneSignal.
-    - URL: https://api.onesignal.com/notifications
-    - Segmento: ["Total Subscriptions"]
-    - Header: Authorization: Key {ONESIGNAL_REST_API_KEY}
+    Sends a formatted Markdown alert message to the Telegram channel or group.
+    Target: TELEGRAM_CHAT_ID environment variable (defaults to '@alertagreves_pt').
+    Includes comprehensive try-except logging for debugging HTTP responses.
+    """
+    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip() or "@alertagreves_pt"
+
+    if not bot_token:
+        print("[Telegram Notice] TELEGRAM_BOT_TOKEN is not set. Skipping Telegram notification.")
+        return False
+
+    empresa = strike.get("empresa") or strike.get("empresa_ou_entidade", "Operador de Transportes")
+    setor = strike.get("setor", "Transportes")
+    regiao = strike.get("regiao", "Nacional")
+    estado = strike.get("estado", "Confirmada")
+    gravidade = strike.get("gravidadeText") or strike.get("gravidade", "High Severity / Alta Gravidade")
+    horario = strike.get("horario") or strike.get("horario_afetado", "24 Horas")
+    servicos = strike.get("servicosMinimos") or strike.get("servicos_minimos", "Sem serviços mínimos definidos.")
+    motivo = strike.get("motivo", "Reivindicações laborais")
+    fonte = strike.get("fonteOficial") or strike.get("fonte_url", "https://dados.gov.pt")
+
+    data_ini = (strike.get("dataInicio") or strike.get("data_inicio", ""))[:10]
+    data_fim = (strike.get("dataFim") or strike.get("data_fim", ""))[:10]
+    periodo = data_ini if data_ini == data_fim or not data_fim else f"{data_ini} a {data_fim}"
+
+    # Formatted Markdown text
+    markdown_message = (
+        f"🚨 *ALERTA GREVES PT: {empresa}* 🚨\n\n"
+        f"📍 *Região:* {regiao}\n"
+        f"🏷️ *Setor:* {setor}\n"
+        f"📅 *Data:* {periodo}\n"
+        f"⏰ *Horário:* {horario}\n"
+        f"🚨 *Estado:* `{estado}`\n"
+        f"⚠️ *Gravidade:* {gravidade}\n\n"
+        f"⚖️ *Serviços Mínimos Decretados:*\n_{servicos}_\n\n"
+        f"📌 *Motivo:* {motivo}\n\n"
+        f"📢 _Acompanha todas as paralisações em tempo real no canal @alertagreves_pt_"
+    )
+
+    # WhatsApp share link
+    share_wa_text = (
+        f"⚠️ *Alerta GrevesPT*: Greve em {empresa} ({setor})\n"
+        f"📅 Data: {periodo}\n"
+        f"⏰ Horário: {horario}\n"
+        f"⚖️ Serviços Mínimos: {servicos}\n"
+        f"ℹ️ Alertas ao vivo: https://t.me/alertagreves_pt"
+    )
+    encoded_share_wa = urllib.parse.quote(share_wa_text)
+    wa_share_url = f"https://wa.me/?text={encoded_share_wa}"
+
+    inline_keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "🔗 Fonte Oficial", "url": fonte},
+                {"text": "📲 Partilhar no WhatsApp", "url": wa_share_url}
+            ],
+            [
+                {"text": "✈️ Abrir @alertagreves_pt", "url": "https://t.me/alertagreves_pt"}
+            ]
+        ]
+    }
+
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": markdown_message,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+        "reply_markup": inline_keyboard
+    }
+
+    print(f"\n[Telegram Request] Sending alert for '{empresa}' to {chat_id}...")
+    print(f"  -> POST URL: https://api.telegram.org/bot{'*' * 8}/sendMessage")
+
+    try:
+        status_code, response_body = execute_http_post(url, json_payload=payload, timeout=HTTP_TIMEOUT)
+        
+        # Parse JSON response for detailed logging
+        try:
+            parsed_json = json.loads(response_body)
+            is_ok = parsed_json.get("ok", False)
+        except Exception:
+            parsed_json = None
+            is_ok = (status_code == 200)
+
+        if status_code == 200 and is_ok:
+            message_id = parsed_json.get("result", {}).get("message_id") if parsed_json else "N/A"
+            print(f"[Telegram Success] HTTP {status_code}: Message delivered successfully! (Message ID: {message_id})")
+            return True
+        else:
+            print(f"[Telegram HTTP Error] Status Code: {status_code}", file=sys.stderr)
+            print(f"[Telegram Error Body]: {response_body}", file=sys.stderr)
+            if parsed_json:
+                print(f"[Telegram Error Details]: {parsed_json.get('description')}", file=sys.stderr)
+            return False
+
+    except Exception as exc:
+        print(f"[Telegram Exception] Request failed with exception: {exc}", file=sys.stderr)
+        return False
+
+
+# ==============================================================================
+# 2. ONESIGNAL REST API NOTIFICATIONS
+# ==============================================================================
+
+def send_onesignal_alert(strike: Dict[str, Any]) -> bool:
+    """
+    Sends a Web Push notification broadcast using the OneSignal REST API.
+    Reads ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY from environment variables.
+    Includes comprehensive try-except logging for debugging HTTP responses.
     """
     app_id = os.getenv("ONESIGNAL_APP_ID", "").strip()
     rest_key = os.getenv("ONESIGNAL_REST_API_KEY", "").strip()
 
     if not app_id or not rest_key:
-        print("[OneSignal Info] ONESIGNAL_APP_ID ou ONESIGNAL_REST_API_KEY ausentes. Disparo ignorado.")
+        print("[OneSignal Notice] ONESIGNAL_APP_ID or ONESIGNAL_REST_API_KEY not configured. Skipping OneSignal push.")
         return False
 
-    empresa = greve.get("empresa") or greve.get("empresa_ou_entidade", "Transportes")
-    setor = greve.get("setor", "Transportes")
-    estado = greve.get("estado", "Aviso de Greve")
-    data_inicio = (greve.get("dataInicio") or greve.get("data_inicio", ""))[:10]
-    data_fim = (greve.get("dataFim") or greve.get("data_fim", ""))[:10]
-    periodo = data_inicio if data_inicio == data_fim or not data_fim else f"{data_inicio} a {data_fim}"
-    servicos = greve.get("servicosMinimos") or greve.get("servicos_minimos", "Sem serviços mínimos definidos.")
-    fonte = greve.get("fonteOficial") or greve.get("fonte_url", "https://dados.gov.pt")
+    empresa = strike.get("empresa") or strike.get("empresa_ou_entidade", "GrevesPT")
+    estado = strike.get("estado", "Aviso de Greve")
+    data_ini = (strike.get("dataInicio") or strike.get("data_inicio", ""))[:10]
+    data_fim = (strike.get("dataFim") or strike.get("data_fim", ""))[:10]
+    periodo = data_ini if data_ini == data_fim or not data_fim else f"{data_ini} a {data_fim}"
+    servicos = strike.get("servicosMinimos") or strike.get("servicos_minimos", "Sem serviços mínimos definidos.")
+    fonte = strike.get("fonteOficial") or strike.get("fonte_url", "https://dados.gov.pt")
 
-    # Resumo para o corpo da notificação (até 140 chars)
-    corpo = f"{estado} ({periodo}): {servicos[:110]}"
+    body_text = f"{estado} ({periodo}): {servicos[:110]}"
     if len(servicos) > 110:
-        corpo += "..."
+        body_text += "..."
 
     payload = {
         "app_id": app_id,
@@ -104,8 +221,8 @@ def enviar_onesignal_push(greve: Dict[str, Any]) -> bool:
             "en": f"GrevesPT • {empresa}"
         },
         "contents": {
-            "pt": corpo,
-            "en": corpo
+            "pt": body_text,
+            "en": body_text
         },
         "url": fonte,
         "priority": 10
@@ -116,193 +233,108 @@ def enviar_onesignal_push(greve: Dict[str, Any]) -> bool:
         "Content-Type": "application/json"
     }
 
+    url = "https://api.onesignal.com/notifications"
+    print(f"\n[OneSignal Request] Sending Web Push broadcast for '{empresa}'...")
+    print(f"  -> POST URL: {url} | Segment: Total Subscriptions | App ID: {app_id}")
+
     try:
-        status_code, resp_text = http_post_payload(
-            "https://api.onesignal.com/notifications",
-            json_data=payload,
-            headers=headers,
-            timeout=HTTP_TIMEOUT
-        )
+        status_code, response_body = execute_http_post(url, json_payload=payload, headers=headers, timeout=HTTP_TIMEOUT)
+
         if status_code in (200, 202):
-            print(f"[OneSignal] Web Push enviado com sucesso para 'Total Subscriptions': {empresa}")
+            print(f"[OneSignal Success] HTTP {status_code}: Web Push broadcast accepted by OneSignal.")
+            print(f"[OneSignal Response Body]: {response_body}")
             return True
         else:
-            print(f"[OneSignal Erro {status_code}]: {resp_text}", file=sys.stderr)
+            print(f"[OneSignal HTTP Error] Status Code: {status_code}", file=sys.stderr)
+            print(f"[OneSignal Error Body]: {response_body}", file=sys.stderr)
             return False
-    except Exception as e:
-        print(f"[OneSignal Exceção]: Falha ao contactar OneSignal REST API: {e}", file=sys.stderr)
+
+    except Exception as exc:
+        print(f"[OneSignal Exception] Request failed with exception: {exc}", file=sys.stderr)
         return False
 
 
 # ==============================================================================
-# 2. TELEGRAM BOT API (@alertagrevespt_bot)
-# ==============================================================================
-
-def enviar_telegram(greve: Dict[str, Any]) -> bool:
-    """
-    Envia uma notificação formatada para o canal/grupo do Telegram usando o Bot @alertagrevespt_bot.
-    Inclui botões inline:
-    - 🔗 Fonte Oficial
-    - 📲 Partilhar no WhatsApp (link https://wa.me/?text=...)
-    """
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-
-    if not bot_token or not chat_id:
-        print("[Telegram Info] TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não definidos. Disparo ignorado.")
-        return False
-
-    empresa = greve.get("empresa") or greve.get("empresa_ou_entidade", "Operador de Transportes")
-    setor = greve.get("setor", "Transportes")
-    regiao = greve.get("regiao", "Nacional")
-    estado = greve.get("estado", "Confirmada")
-    horario = greve.get("horario") or greve.get("horario_afetado", "24 Horas")
-    servicos = greve.get("servicosMinimos") or greve.get("servicos_minimos", "Sem serviços mínimos fixados.")
-    motivo = greve.get("motivo", "Reivindicações laborais")
-    fonte = greve.get("fonteOficial") or greve.get("fonte_url", "https://dados.gov.pt")
-
-    data_inicio_raw = (greve.get("dataInicio") or greve.get("data_inicio", ""))[:10]
-    data_fim_raw = (greve.get("dataFim") or greve.get("data_fim", ""))[:10]
-    periodo = data_inicio_raw if data_inicio_raw == data_fim_raw or not data_fim_raw else f"{data_inicio_raw} a {data_fim_raw}"
-
-    status_emoji = "🔴" if "Confirmada" in estado else ("⚖️" if "Mínimos" in estado else "⚠️")
-
-    # Formatação limpa em HTML
-    mensagem_html = (
-        f"{status_emoji} <b>ALERTA GREVES PT: {empresa}</b> {status_emoji}\n\n"
-        f"📍 <b>Região:</b> {regiao}\n"
-        f"🏷️ <b>Setor:</b> {setor}\n"
-        f"📅 <b>Data:</b> {periodo}\n"
-        f"⏰ <b>Horário:</b> {horario}\n"
-        f"🚨 <b>Estado:</b> <code>{estado}</code>\n\n"
-        f"⚖️ <b>Serviços Mínimos Decretados:</b>\n<i>{servicos}</i>\n\n"
-        f"📌 <b>Motivo:</b> {motivo}\n\n"
-        f"📢 <i>Acompanha todas as paralisações em tempo real no bot @alertagrevespt_bot.</i>"
-    )
-
-    # Texto formatado para o botão direto "📲 Partilhar no WhatsApp" (https://wa.me/?text=...)
-    share_wa_text = (
-        f"⚠️ *Alerta GrevesPT*: Greve em {empresa} ({setor})\n"
-        f"📅 Data: {periodo}\n"
-        f"⏰ Horário: {horario}\n"
-        f"⚖️ Serviços Mínimos: {servicos}\n"
-        f"ℹ️ Alertas ao vivo: https://t.me/alertagrevespt_bot"
-    )
-    encoded_share_wa = urllib.parse.quote(share_wa_text)
-    wa_share_url = f"https://wa.me/?text={encoded_share_wa}"
-
-    reply_markup = {
-        "inline_keyboard": [
-            [
-                {"text": "🔗 Fonte Oficial", "url": fonte},
-                {"text": "📲 Partilhar no WhatsApp", "url": wa_share_url}
-            ],
-            [
-                {"text": "✈️ Abrir @alertagrevespt_bot", "url": "https://t.me/alertagrevespt_bot"}
-            ]
-        ]
-    }
-
-    url_telegram = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": mensagem_html,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-        "reply_markup": reply_markup
-    }
-
-    try:
-        status_code, resp_text = http_post_payload(url_telegram, json_data=payload, timeout=HTTP_TIMEOUT)
-        if status_code == 200:
-            print(f"[Telegram] Alerta enviado com sucesso para {chat_id}.")
-            return True
-        else:
-            print(f"[Telegram Erro {status_code}]: {resp_text}", file=sys.stderr)
-            return False
-    except Exception as e:
-        print(f"[Telegram Exceção]: Falha ao contactar Telegram Bot API: {e}", file=sys.stderr)
-        return False
-
-
-# ==============================================================================
-# 3. DISPATCHER UNIFICADO (Apenas OneSignal + Telegram)
+# 3. UNIFIED DISPATCHER
 # ==============================================================================
 
 def notify_all_channels(strike_item: Dict[str, Any]) -> Dict[str, bool]:
     """
-    Dispara simultaneamente para os 2 canais oficiais (OneSignal + Telegram Bot).
-    Tratamento independente: uma falha num canal não afeta o outro.
+    Dispatches alerts to both Telegram and OneSignal with isolated error handling.
     """
     empresa = strike_item.get("empresa") or strike_item.get("empresa_ou_entidade", "Greve")
-    print(f"\n[Broadcast Produção] Disparo para OneSignal e Telegram: {empresa}...")
+    print(f"\n[Dispatch Service] Processing notification dispatch for: {empresa}...")
 
-    resultados = {
-        "onesignal": False,
-        "telegram": False
+    results = {
+        "telegram": False,
+        "onesignal": False
     }
 
-    # 1. OneSignal REST API (Total Subscriptions)
+    # 1. Telegram Alert
     try:
-        resultados["onesignal"] = enviar_onesignal_push(strike_item)
+        results["telegram"] = send_telegram_alert(strike_item)
     except Exception as e:
-        print(f"[Erro Isolado OneSignal]: {e}", file=sys.stderr)
+        print(f"[Telegram Top-Level Error]: {e}", file=sys.stderr)
 
-    # 2. Telegram Bot (@alertagrevespt_bot)
+    # 2. OneSignal Alert
     try:
-        resultados["telegram"] = enviar_telegram(strike_item)
+        results["onesignal"] = send_onesignal_alert(strike_item)
     except Exception as e:
-        print(f"[Erro Isolado Telegram]: {e}", file=sys.stderr)
+        print(f"[OneSignal Top-Level Error]: {e}", file=sys.stderr)
 
-    print(f"[Resumo] OneSignal: {'OK' if resultados['onesignal'] else 'Off/Erro'} | "
-          f"Telegram: {'OK' if resultados['telegram'] else 'Off/Erro'}")
+    print(f"[Dispatch Summary] Telegram: {'SUCCESS' if results['telegram'] else 'FAILED/OFF'} | "
+          f"OneSignal: {'SUCCESS' if results['onesignal'] else 'FAILED/OFF'}\n")
 
-    return resultados
+    return results
+
+
+# Backward compatibility aliases
+enviar_telegram = send_telegram_alert
+enviar_onesignal_push = send_onesignal_alert
 
 
 def check_keys_status() -> None:
-    """Verifica quais das 5 chaves de produção estão configuradas no ambiente."""
-    chaves = {
+    """Verifies and logs the presence of all 5 production environment variables."""
+    keys = {
         "GEMINI_API_KEY": bool(os.getenv("GEMINI_API_KEY")),
-        "ONESIGNAL_APP_ID": bool(os.getenv("ONESIGNAL_APP_ID")),
-        "ONESIGNAL_REST_API_KEY": bool(os.getenv("ONESIGNAL_REST_API_KEY")),
         "TELEGRAM_BOT_TOKEN": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
         "TELEGRAM_CHAT_ID": bool(os.getenv("TELEGRAM_CHAT_ID")),
+        "ONESIGNAL_APP_ID": bool(os.getenv("ONESIGNAL_APP_ID")),
+        "ONESIGNAL_REST_API_KEY": bool(os.getenv("ONESIGNAL_REST_API_KEY")),
     }
 
-    print("\n" + "=" * 60)
-    print("GrevesPT • Estado das 5 Chaves de Produção")
-    print("=" * 60)
-    for chave, definida in chaves.items():
-        simbolo = "✅ Configurada" if definida else "⚠️ Ausente"
-        print(f"  • {chave:24}: {simbolo}")
-    print("=" * 60 + "\n")
+    print("\n" + "=" * 65)
+    print("GrevesPT • Production Keys Verification")
+    print("=" * 65)
+    for key, is_set in keys.items():
+        status = "✅ Configured" if is_set else "⚠️ Not Set"
+        print(f"  • {key:24}: {status}")
+    print(f"  • Active TELEGRAM_CHAT_ID : {os.getenv('TELEGRAM_CHAT_ID') or '@alertagreves_pt'}")
+    print("=" * 65 + "\n")
 
 
 if __name__ == "__main__":
     sample_strike = {
-        "empresa": "CP - Comboios de Portugal",
+        "empresa": "Metropolitano de Lisboa, E.P.E.",
         "setor": "Transportes",
-        "regiao": "Nacional",
+        "regiao": "AML - Lisboa",
         "estado": "Confirmada",
         "gravidade": "alta",
-        "dataInicio": "2026-10-24T00:00:00",
-        "dataFim": "2026-10-24T23:59:59",
-        "horario": "00h00 às 24h00 (24 Horas)",
-        "motivo": "Revisão da tabela salarial e cumprimento do Acordo de Empresa",
-        "servicosMinimos": "O Tribunal Arbitral do CES decretou serviços mínimos de 25% para comboios Urbanos, Regionais e Longo Curso.",
-        "fonteOficial": "https://www.cp.pt/passageiros/pt/consultar-horarios/avisos/greve"
+        "gravidadeText": "High Severity / Alta Gravidade",
+        "dataInicio": "2026-10-14T05:00:00",
+        "dataFim": "2026-10-14T23:59:59",
+        "horario": "05h00 às 10h00 (reabertura gradual e perturbações residuais)",
+        "motivo": "Reivindicações salariais e contratação de pessoal de estação",
+        "servicosMinimos": "O Tribunal Arbitral do CES não decretou serviços mínimos de circulação. Todas as quatro linhas encerradas no período matinal.",
+        "fonteOficial": "https://www.metrolisboa.pt/avisos/"
     }
 
-    if "--status" in sys.argv:
+    if "--status" in sys.argv or "--check" in sys.argv:
         check_keys_status()
-    elif "--test-onesignal" in sys.argv:
-        ok = enviar_onesignal_push(sample_strike)
-        print(f"Resultado OneSignal: {'Sucesso' if ok else 'Falha'}")
     elif "--test-telegram" in sys.argv:
-        ok = enviar_telegram(sample_strike)
-        print(f"Resultado Telegram: {'Sucesso' if ok else 'Falha'}")
+        send_telegram_alert(sample_strike)
+    elif "--test-onesignal" in sys.argv:
+        send_onesignal_alert(sample_strike)
     else:
         check_keys_status()
-        res = notify_all_channels(sample_strike)
-        print("\nResultado:", json.dumps(res, indent=2))
+        notify_all_channels(sample_strike)
