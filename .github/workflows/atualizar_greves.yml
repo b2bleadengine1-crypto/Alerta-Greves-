@@ -14,7 +14,6 @@ on:
     branches:
       - main
 
-# Permissões necessárias para permitir ao bot fazer commit e push dos ficheiros de dados
 permissions:
   contents: write
 
@@ -35,7 +34,7 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Instalar Dependências do Pipeline
+      - name: Instalar Dependências
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -43,10 +42,10 @@ jobs:
       - name: Executar Scraper e Processamento com Gemini 2.5 Flash
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
           ONESIGNAL_REST_API_KEY: ${{ secrets.ONESIGNAL_REST_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python scraper_greves.py
 
@@ -67,5 +66,5 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add greves.json public/greves.json greves_arquivo.json
-          git commit -m "chore(data): atualizar dados de greves e serviços mínimos [skip ci]"
+          git commit -m "chore(data): atualizar dados oficiais de greves e serviços mínimos [skip ci]"
           git push
