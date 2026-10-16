@@ -1,0 +1,24 @@
+[
+  {
+    "id": "metro-lisboa-20261014",
+    "empresa": "Metropolitano de Lisboa, E.P.E.",
+    "empresaSigla": "Metro de Lisboa",
+    "setor": "Transportes",
+    "regiao": "AML - Lisboa",
+    "estado": "Confirmada",
+    "gravidade": "alta",
+    "gravidadeText": "High Severity / Alta Gravidade",
+    "dataInicio": "2026-10-14T05:00:00",
+    "dataFim": "2026-10-14T23:59:59",
+    "horario": "05h00 às 10h00 (com reabertura gradual a partir das 10h30 e perturbações residuais)",
+    "sindicato": "STRUP / FECTRANS / FESNINAS",
+    "motivo": "Reivindicações salariais, evolução de carreiras e reforço de recursos operacionais de estação e manutenção",
+    "servicosMinimos": "O Tribunal Arbitral do CES não decretou serviços mínimos de circulação de comboios. Todas as quatro linhas (Azul, Amarela, Verde e Vermelha) e respetivas estações encerradas durante o período matinal. Garantidos exclusivamente serviços mínimos de segurança das instalações.",
+    "impacto": "Paralisação geral da circulação no Metropolitano de Lisboa no período matinal, com elevado impacto no tráfego rodoviário e sobrecarga nos autocarros Carris.",
+    "alternativas": "Utilização das carreiras reforçadas da Carris (linhas 736, 744, 750, 783) e comboios urbanos da CP (Linhas de Sintra, Cascais e Azambuja).",
+    "fonteOficial": "https://www.metrolisboa.pt/avisos/",
+    "fonteNome": "Metropolitano de Lisboa (Avisos de Serviço)",
+    "atualizadoEm": "2026-10-14T11:40:00Z",
+    "arquivadoEm": "2026-10-16T00:18:43.107209"
+  }
+]
